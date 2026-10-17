@@ -20,11 +20,23 @@ pub const LAYER_IN_CU: u32 = 1 << 12;
 pub const FLOATS_PER_INSTANCE: usize = 8;
 const SPATIAL_CELL_MM: f32 = 2.5;
 
+#[derive(Clone, Debug, Default)]
+pub struct NetStats {
+    pub id: u32,
+    pub name: String,
+    pub total_length_mm: f32,
+    pub segment_count: usize,
+    pub via_count: usize,
+    pub pad_count: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct HoveredPrimitiveInfo {
     pub instance_idx: usize,
     pub kind: &'static str,
     pub layer_name: &'static str,
+    pub net_id: u32,
+    pub net_name: String,
     pub summary: String,
     pub center_x: f32,
     pub center_y: f32,
@@ -36,10 +48,16 @@ pub struct ParsedBoard {
     pub primitive_count: usize,
     pub bounds: [f32; 4], // [min_x, min_y, max_x, max_y]
     pub spatial_grid: HashMap<(i32, i32), Vec<u32>>,
+    pub nets: HashMap<u32, NetStats>,
 }
 
 impl ParsedBoard {
-    pub fn with_spatial_grid(instances: Vec<f32>, primitive_count: usize, bounds: [f32; 4]) -> Self {
+    pub fn with_spatial_grid(
+        instances: Vec<f32>,
+        primitive_count: usize,
+        bounds: [f32; 4],
+        nets: HashMap<u32, NetStats>,
+    ) -> Self {
         let mut spatial_grid: HashMap<(i32, i32), Vec<u32>> =
             HashMap::with_capacity((primitive_count / 4).max(64));
 
@@ -71,6 +89,7 @@ impl ParsedBoard {
             primitive_count,
             bounds,
             spatial_grid,
+            nets,
         }
     }
 
@@ -108,7 +127,9 @@ impl ParsedBoard {
                         let x1 = chunk[2];
                         let y1 = chunk[3];
                         let r = chunk[4].max(0.15);
-                        let prim_type = chunk[7].round() as i32;
+                        let raw_w = chunk[7];
+                        let net_id = (raw_w / 16.0).floor() as u32;
+                        let prim_type = (raw_w - (net_id as f32) * 16.0).round() as i32;
 
                         let dist = if prim_type == 0 {
                             // Point-to-segment distance for capsule tracks
@@ -146,12 +167,29 @@ impl ParsedBoard {
         let r1 = chunk[4];
         let r2 = chunk[5];
         let layer_bits = chunk[6] as u32;
-        let prim_type = chunk[7].round() as i32;
+        let raw_w = chunk[7];
+        let net_id = (raw_w / 16.0).floor() as u32;
+        let prim_type = (raw_w - (net_id as f32) * 16.0).round() as i32;
+
+        let net_name = self
+            .nets
+            .get(&net_id)
+            .map(|n| n.name.clone())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                if net_id > 0 {
+                    format!("Net #{}", net_id)
+                } else {
+                    "Unconnected".to_string()
+                }
+            });
 
         let layer_name = if (layer_bits & LAYER_F_CU) != 0 && (layer_bits & LAYER_B_CU) != 0 {
             "F.Cu ↔ B.Cu (PTH)"
         } else if (layer_bits & LAYER_F_CU) != 0 {
             "F.Cu (Top Copper)"
+        } else if (layer_bits & LAYER_IN_CU) != 0 {
+            "In1..4.Cu (Inner Copper)"
         } else if (layer_bits & LAYER_B_CU) != 0 {
             "B.Cu (Bottom Copper)"
         } else if (layer_bits & LAYER_EDGE_CUTS) != 0 {
@@ -168,41 +206,44 @@ impl ParsedBoard {
             "Multi-Layer"
         };
 
+        let net_tag = if net_id > 0 {
+            format!(" • Net: {}", net_name)
+        } else {
+            String::new()
+        };
+
         let (kind, summary) = match prim_type {
             0 => {
                 let len = ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt();
                 (
                     "Track Capsule",
                     format!(
-                        "Track [{}] w={:.2}mm len={:.2}mm @ ({:.1}, {:.1})",
+                        "Track [{}] w={:.2}mm len={:.2}mm{} (Click to probe net)",
                         layer_name,
                         r1 * 2.0,
                         len,
-                        (x0 + x1) * 0.5,
-                        (y0 + y1) * 0.5
+                        net_tag
                     ),
                 )
             }
             1 => (
                 "Plated Via",
                 format!(
-                    "Via [{}] Ø{:.2}mm / drill Ø{:.2}mm @ ({:.1}, {:.1})",
+                    "Via [{}] Ø{:.2}mm / drill Ø{:.2}mm{} (Click to probe net)",
                     layer_name,
                     r1 * 2.0,
                     r2 * 2.0,
-                    x0,
-                    y0
+                    net_tag
                 ),
             ),
             2 => (
                 "SMD/THT Pad",
                 format!(
-                    "Pad [{}] {:.2}×{:.2}mm @ ({:.1}, {:.1})",
+                    "Pad [{}] {:.2}×{:.2}mm{} (Click to probe net)",
                     layer_name,
                     r1 * 2.0,
                     r2 * 2.0,
-                    x0,
-                    y0
+                    net_tag
                 ),
             ),
             _ => (
@@ -215,6 +256,8 @@ impl ParsedBoard {
             instance_idx: idx,
             kind,
             layer_name,
+            net_id,
+            net_name,
             summary,
             center_x: (x0 + x1) * 0.5,
             center_y: (y0 + y1) * 0.5,
@@ -226,6 +269,7 @@ impl ParsedBoard {
 pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
     let mut instances = Vec::with_capacity(8192 * FLOATS_PER_INSTANCE);
     let mut primitive_count = 0;
+    let mut nets: HashMap<u32, NetStats> = HashMap::new();
 
     let mut min_x = f32::MAX;
     let mut min_y = f32::MAX;
@@ -267,6 +311,7 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
                     fp_rot_rad,
                     &mut instances,
                     &mut primitive_count,
+                    &mut nets,
                     &mut min_x,
                     &mut min_y,
                     &mut max_x,
@@ -276,6 +321,23 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
             }
             if in_footprint && fp_depth <= 0 {
                 in_footprint = false;
+            }
+            continue;
+        }
+
+        // Top-level net declaration: (net 11 "GND")
+        if !in_footprint && is_token_start(line, "(net") {
+            if let Some((net_id, Some(net_name))) = extract_net_def(line) {
+                if net_id > 0 {
+                    let entry = nets.entry(net_id).or_insert_with(|| NetStats {
+                        id: net_id,
+                        name: net_name.clone(),
+                        ..Default::default()
+                    });
+                    if entry.name.is_empty() {
+                        entry.name = net_name;
+                    }
+                }
             }
             continue;
         }
@@ -320,6 +382,7 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
                     fp_rot_rad,
                     &mut instances,
                     &mut primitive_count,
+                    &mut nets,
                     &mut min_x,
                     &mut min_y,
                     &mut max_x,
@@ -340,7 +403,7 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
         [70.0, 40.0, 190.0, 150.0]
     };
 
-    ParsedBoard::with_spatial_grid(instances, primitive_count, bounds)
+    ParsedBoard::with_spatial_grid(instances, primitive_count, bounds, nets)
 }
 
 /// Computes a pure-Rust geometric vector diff between Revision A and Revision B!
@@ -405,7 +468,12 @@ pub fn compute_vector_diff_boards(
 
     let primitive_count = out_instances.len() / FLOATS_PER_INSTANCE;
     (
-        ParsedBoard::with_spatial_grid(out_instances, primitive_count, board_b.bounds),
+        ParsedBoard::with_spatial_grid(
+            out_instances,
+            primitive_count,
+            board_b.bounds,
+            board_b.nets.clone(),
+        ),
         added,
         removed,
         unchanged,
@@ -444,6 +512,7 @@ pub fn generate_hdi_stress_board(target_primitives: usize) -> ParsedBoard {
             }
             let x = min_x + 3.0 + (c as f32) * dx;
             let idx = r * cols + c;
+            let synthetic_net = ((idx % 16) + 1) as f32;
 
             match idx % 4 {
                 0 => push_raw(
@@ -456,7 +525,7 @@ pub fn generate_hdi_stress_board(target_primitives: usize) -> ParsedBoard {
                     0.11,
                     0.11,
                     LAYER_F_CU as f32,
-                    0.0,
+                    synthetic_net * 16.0,
                 ),
                 1 => push_raw(
                     &mut instances,
@@ -468,7 +537,7 @@ pub fn generate_hdi_stress_board(target_primitives: usize) -> ParsedBoard {
                     0.11,
                     0.11,
                     LAYER_B_CU as f32,
-                    0.0,
+                    synthetic_net * 16.0,
                 ),
                 2 => push_raw(
                     &mut instances,
@@ -480,7 +549,7 @@ pub fn generate_hdi_stress_board(target_primitives: usize) -> ParsedBoard {
                     0.26,
                     0.13,
                     (LAYER_F_CU | LAYER_B_CU) as f32,
-                    1.0,
+                    synthetic_net * 16.0 + 1.0,
                 ),
                 _ => push_raw(
                     &mut instances,
@@ -492,13 +561,13 @@ pub fn generate_hdi_stress_board(target_primitives: usize) -> ParsedBoard {
                     0.22,
                     0.22,
                     (LAYER_F_CU | LAYER_F_SILKS) as f32,
-                    2.0,
+                    synthetic_net * 16.0 + 2.0,
                 ),
             }
         }
     }
 
-    ParsedBoard::with_spatial_grid(instances, primitive_count, bounds)
+    ParsedBoard::with_spatial_grid(instances, primitive_count, bounds, HashMap::new())
 }
 
 fn is_token_start(line: &str, token: &str) -> bool {
@@ -520,6 +589,7 @@ fn process_primitive_block(
     fp_rot_rad: f32,
     instances: &mut Vec<f32>,
     primitive_count: &mut usize,
+    nets: &mut HashMap<u32, NetStats>,
     min_x: &mut f32,
     min_y: &mut f32,
     max_x: &mut f32,
@@ -549,19 +619,61 @@ fn process_primitive_block(
         ) {
             let width = extract_single(block, "(width ").unwrap_or(0.25);
             let layer_mask = extract_layer_mask(block);
+            let net_id = extract_single(block, "(net ").unwrap_or(0.0) as u32;
             if layer_mask != 0 {
                 update_bounds(x1, y1);
                 update_bounds(x2, y2);
-                push_raw(instances, primitive_count, x1, y1, x2, y2, width, width, layer_mask as f32, 0.0);
+                if net_id > 0 {
+                    let seg_len = ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
+                    let entry = nets.entry(net_id).or_insert_with(|| NetStats {
+                        id: net_id,
+                        ..Default::default()
+                    });
+                    entry.total_length_mm += seg_len;
+                    entry.segment_count += 1;
+                }
+                let encoded = (net_id as f32) * 16.0;
+                push_raw(
+                    instances,
+                    primitive_count,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    width,
+                    width,
+                    layer_mask as f32,
+                    encoded,
+                );
             }
         }
     } else if is_token_start(block, "(via") {
         if let Some((x, y)) = extract_pair(block, "(at ") {
             let size = extract_single(block, "(size ").unwrap_or(0.8);
             let drill = extract_single(block, "(drill ").unwrap_or(0.4);
+            let net_id = extract_single(block, "(net ").unwrap_or(0.0) as u32;
             update_bounds(x, y);
+            if net_id > 0 {
+                let entry = nets.entry(net_id).or_insert_with(|| NetStats {
+                    id: net_id,
+                    ..Default::default()
+                });
+                entry.via_count += 1;
+            }
             let mask = LAYER_F_CU | LAYER_B_CU;
-            push_raw(instances, primitive_count, x, y, x, y, size, drill, mask as f32, 1.0);
+            let encoded = (net_id as f32) * 16.0 + 1.0;
+            push_raw(
+                instances,
+                primitive_count,
+                x,
+                y,
+                x,
+                y,
+                size,
+                drill,
+                mask as f32,
+                encoded,
+            );
         }
     } else if is_token_start(block, "(gr_line") || is_token_start(block, "(fp_line") {
         if let (Some((lx1, ly1)), Some((lx2, ly2))) = (
@@ -613,9 +725,34 @@ fn process_primitive_block(
         ) {
             let (wx, wy) = transform_point(px, py, fp_x, fp_y, fp_rot_rad);
             let layer_mask = extract_layer_mask(block);
+            let (net_id, net_name_opt) = extract_net_def(block).unwrap_or((0, None));
             if layer_mask != 0 {
                 update_bounds(wx, wy);
-                push_raw(instances, primitive_count, wx, wy, wx, wy, pw, ph, layer_mask as f32, 2.0);
+                if net_id > 0 {
+                    let entry = nets.entry(net_id).or_insert_with(|| NetStats {
+                        id: net_id,
+                        ..Default::default()
+                    });
+                    entry.pad_count += 1;
+                    if entry.name.is_empty() {
+                        if let Some(n) = net_name_opt {
+                            entry.name = n;
+                        }
+                    }
+                }
+                let encoded = (net_id as f32) * 16.0 + 2.0;
+                push_raw(
+                    instances,
+                    primitive_count,
+                    wx,
+                    wy,
+                    wx,
+                    wy,
+                    pw,
+                    ph,
+                    layer_mask as f32,
+                    encoded,
+                );
             }
         }
     }
@@ -693,6 +830,20 @@ fn extract_single(s: &str, prefix: &str) -> Option<f32> {
     inner.split_whitespace().next()?.parse().ok()
 }
 
+fn extract_net_def(s: &str) -> Option<(u32, Option<String>)> {
+    let idx = s.find("(net ")?;
+    let rest = &s[idx + 5..];
+    let end = rest.find(')')?;
+    let inner = rest[..end].trim();
+    let mut parts = inner.splitn(2, char::is_whitespace);
+    let id: u32 = parts.next()?.parse().ok()?;
+    let name = parts
+        .next()
+        .map(|n| n.trim().trim_matches('"').to_string())
+        .filter(|n| !n.is_empty());
+    Some((id, name))
+}
+
 fn extract_layer_mask(s: &str) -> u32 {
     let mut mask = 0u32;
     if s.contains("\"*.Cu\"") {
@@ -737,19 +888,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_and_spatial_query() {
+    fn test_parse_spatial_and_net_length() {
         let sample_pcb = r#"
         (kicad_pcb
-          (segment (start 100.0 80.0) (end 120.0 80.0) (width 0.25) (layer "F.Cu"))
-          (segment (start 100.0 85.0) (end 120.0 85.0) (width 0.20) (layer "In1.Cu"))
-          (via (at 110.0 80.0) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu"))
+          (net 11 "GND")
+          (segment (start 100.0 80.0) (end 120.0 80.0) (width 0.25) (layer "F.Cu") (net 11))
+          (segment (start 120.0 80.0) (end 120.0 95.0) (width 0.20) (layer "In1.Cu") (net 11))
+          (via (at 120.0 80.0) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 11))
         )
         "#;
         let board = parse_kicad_pcb_str(sample_pcb);
         assert_eq!(board.primitive_count, 3);
-        let hit = board.query_nearest(105.0, 80.05, LAYER_F_CU, 1.5);
-        assert!(hit.is_some());
-        assert_eq!(hit.unwrap().kind, "Track Capsule");
+        let gnd = board.nets.get(&11).expect("Net 11 GND should exist");
+        assert_eq!(gnd.name, "GND");
+        assert_eq!(gnd.segment_count, 2);
+        assert_eq!(gnd.via_count, 1);
+        assert!((gnd.total_length_mm - 35.0).abs() < 0.01);
+
+        let hit = board
+            .query_nearest(105.0, 80.05, LAYER_F_CU, 1.5)
+            .expect("Should hit F.Cu track");
+        assert_eq!(hit.kind, "Track Capsule");
+        assert_eq!(hit.net_id, 11);
+        assert_eq!(hit.net_name, "GND");
     }
 
     #[test]
@@ -769,5 +930,3 @@ mod tests {
         assert_eq!(unchanged, 1);
     }
 }
-
-

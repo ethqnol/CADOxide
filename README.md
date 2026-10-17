@@ -95,6 +95,9 @@ All rendering is performed in **a single instanced draw call** (`gl.draw_arrays_
   - The vertex shader applies 3D rotation (`yaw` and `pitch`) around the board center, enabling real-time 60 FPS orbit inspection (`Shift + Drag`).
 - **Instanced Signed Distance Field (SDF) Fragment Evaluation:**
   - In `FS_SRC`, rounded track ends and annular drill holes are evaluated mathematically via Euclidean distance fields without generating complex tessellated meshes.
+- **GPU Net Highlighting & Signal Length Probing:**
+  - Packing `net_id * 16.0 + prim_type` into the 8th instance float (`a_params.w`) lets the GPU vertex shader highlight an entire electrical net across all layers in a single uniform update (`u_selected_net_id`) while dimming unrelated copper to 16% opacity.
+  - Clicking any trace, via, or pad (or selecting from the **Probe Net** dropdown) displays total routed length ($\text{mm}$ and $\text{mils}$), estimated FR4 propagation delay ($\approx 6.5\text{ ps/mm}$), and segment/via/pad counts.
 
 ### 4. Pure-Rust Geometric Vector Diffing Engine
 - Given Revision A ($R_A$) and Revision B ($R_B$), primitives are spatially quantized into coordinate hash keys `(x0, y0, x1, y1, width, layer)`.

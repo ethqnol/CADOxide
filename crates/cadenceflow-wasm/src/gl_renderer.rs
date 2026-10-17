@@ -14,6 +14,7 @@ uniform vec4 u_center_and_scale;        // x: centerX_mm, y: centerY_mm, z: scal
 uniform vec4 u_viewport_and_opacities;  // x: width_px, y: height_px, z: f_cu_alpha, w: b_cu_alpha
 uniform vec4 u_diff_params;             // x: is_diff_view (0=normal, 1=blend, 2=wipe), y: wipe_ratio (0..1), z: silk_alpha, w: mask_alpha
 uniform vec4 u_3d_and_hover;            // x: mode_3d (0=2D, >0=3D Z-explosion), y: yaw_rad, z: pitch_rad, w: hovered_instance_id (-1 = none)
+uniform int u_selected_net_id;          // 0 = no net selected, >0 = X-Ray highlight this electrical net across all layers
 
 out vec2 v_local_pos;
 out vec2 v_seg_len_and_r;
@@ -37,11 +38,13 @@ void main() {
   vec2 p2 = a_p1_p2.zw;
   float w = max(a_params.x, 0.08);
   float h = max(a_params.y, 0.08);
-  float prim_type = a_params.w;
+
+  // Decode net_id and prim_type from packed a_params.w = net_id * 16.0 + prim_type
+  int net_id = int(floor(a_params.w / 16.0 + 0.001));
+  float prim_type = a_params.w - float(net_id) * 16.0;
   float scale = u_center_and_scale.z;
 
   // OPTIMIZATION 1: Hardware Sub-Pixel LOD Culling in Vertex Stage
-  // Culls ultra-small microvias/pads when zoomed far out before any fragment shader executes
   float max_dim_px = max(w, h) * scale;
   if (prim_type < 2.2 && max_dim_px < 0.38 && length(p2 - p1) * scale < 0.55) {
     gl_Position = vec4(-2.0, -2.0, 0.0, 1.0);
@@ -114,6 +117,16 @@ void main() {
       v_color = vec4(0.94, 0.96, 0.98, u_diff_params.z); // SilkS
     } else {
       v_color = vec4(0.04, 0.59, 0.41, u_diff_params.w); // Mask
+    }
+
+    // GPU Netlist X-Ray Highlighting
+    if (u_selected_net_id > 0) {
+      if (net_id == u_selected_net_id) {
+        v_is_hovered = 2.0; // Highlight entire connected net
+      } else if ((layer_mask & 388u) == 0u) {
+        // Dim unrelated copper/silk/mask while keeping board Edge.Cuts & review pins readable
+        v_color = vec4(v_color.rgb * 0.35, v_color.a * 0.16);
+      }
     }
   }
 
@@ -189,7 +202,6 @@ out vec4 outColor;
 
 void main() {
   // Split-Wipe Mode (u_diff_params.x == 2.0):
-  // Left of wipe_ratio displays Revision A (unchanged + removed), Right displays Revision B (unchanged + added)
   if (u_diff_params.x > 1.5) {
     float wipe = u_diff_params.y;
     if (v_screen_x_ratio < wipe) {
@@ -224,8 +236,10 @@ void main() {
     }
   }
 
-  // Real-time GPU hover highlight without VBO re-upload
-  if (v_is_hovered > 0.5) {
+  // Real-time GPU Net X-Ray (v_is_hovered > 1.5) or Cursor Hover (v_is_hovered > 0.5)
+  if (v_is_hovered > 1.5) {
+    outColor = vec4(mix(outColor.rgb, vec3(0.08, 1.0, 0.78), 0.84), 1.0);
+  } else if (v_is_hovered > 0.5) {
     outColor = vec4(mix(outColor.rgb, vec3(0.15, 0.96, 1.0), 0.78), 1.0);
   }
 }
@@ -249,6 +263,7 @@ pub struct RustGpuRenderer {
     pub yaw_rad: f32,
     pub pitch_rad: f32,
     pub hovered_instance_id: i32,
+    pub selected_net_id: i32,
 }
 
 impl RustGpuRenderer {
@@ -300,6 +315,7 @@ impl RustGpuRenderer {
             yaw_rad: -0.45,
             pitch_rad: 0.62,
             hovered_instance_id: -1,
+            selected_net_id: 0,
         })
     }
 
@@ -431,6 +447,11 @@ impl RustGpuRenderer {
             self.pitch_rad,
             self.hovered_instance_id as f32,
         );
+
+        let u5 = self
+            .gl
+            .get_uniform_location(&self.program, "u_selected_net_id");
+        self.gl.uniform1i(u5.as_ref(), self.selected_net_id);
 
         self.gl.bind_vertex_array(Some(&self.vao));
         self.gl

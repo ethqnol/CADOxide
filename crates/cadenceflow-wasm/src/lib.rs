@@ -73,6 +73,7 @@ pub struct AppController {
     pub parse_time_ms: f64,
     pub is_dragging: bool,
     pub last_mouse: (f64, f64),
+    pub mouse_down_pos: (f64, f64),
     pub drop_pin_mode: bool,
     pub pending_pin_coords: Option<(f32, f32)>,
     pub selected_thread_idx: usize,
@@ -84,6 +85,78 @@ pub struct AppController {
 }
 
 impl AppController {
+    pub fn select_net_probe(&mut self, net_id: i32) {
+        if let Some(ref mut r) = self.renderer {
+            r.selected_net_id = net_id.max(0);
+            r.draw();
+        }
+        if let Some(sel) = self
+            .doc
+            .get_element_by_id("rust-net-select")
+            .and_then(|e| e.dyn_into::<HtmlSelectElement>().ok())
+        {
+            sel.set_value(&net_id.max(0).to_string());
+        }
+        if let Some(banner) = self.doc.get_element_by_id("net-probe-banner") {
+            if net_id > 0 {
+                let nid = net_id as u32;
+                let stats = self.current_board.nets.get(&nid).cloned().unwrap_or_default();
+                let name = if stats.name.is_empty() {
+                    format!("Net #{}", nid)
+                } else {
+                    stats.name
+                };
+                let len_mils = stats.total_length_mm * 39.3701;
+                let delay_ps = stats.total_length_mm * 6.67;
+                if let Some(info_el) = self.doc.get_element_by_id("net-probe-info") {
+                    info_el.set_inner_html(&format!(
+                        "<span class='text-emerald-300 font-bold'>⚡ NET #{}: {}</span> &bull; \
+                         <span class='text-white font-semibold'>Length: {:.2} mm ({:.0} mils)</span> &bull; \
+                         <span class='text-cyan-300'>Flight Delay: {:.1} ps</span> &bull; \
+                         <span class='text-slate-300'>{} traces / {} vias / {} pads</span>",
+                        nid,
+                        name,
+                        stats.total_length_mm,
+                        len_mils,
+                        delay_ps,
+                        stats.segment_count,
+                        stats.via_count,
+                        stats.pad_count
+                    ));
+                }
+                let _ = banner.class_list().remove_1("hidden");
+            } else {
+                let _ = banner.class_list().add_1("hidden");
+            }
+        }
+    }
+
+    pub fn populate_net_selector(&self) {
+        if let Some(sel) = self.doc.get_element_by_id("rust-net-select") {
+            let mut net_list: Vec<_> = self.current_board.nets.values().collect();
+            net_list.sort_by(|a, b| {
+                b.total_length_mm
+                    .partial_cmp(&a.total_length_mm)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            let mut html =
+                String::from(r#"<option value="0">🔬 Probe Net (Click trace or select)...</option>"#);
+            for n in net_list.iter().take(80) {
+                let label = if n.name.is_empty() {
+                    format!("Net #{}", n.id)
+                } else {
+                    n.name.clone()
+                };
+                html.push_str(&format!(
+                    r#"<option value="{}">{} ({:.1} mm • {} vias)</option>"#,
+                    n.id, label, n.total_length_mm, n.via_count
+                ));
+            }
+            sel.set_inner_html(&html);
+        }
+    }
+
     pub fn rebuild_gpu_buffer_with_markers(&mut self) {
         let base = if self.active_tab == "diff" {
             &self.board_diff
@@ -329,6 +402,7 @@ pub fn start_cadenceflow_app() {
         primitive_count: 0,
         bounds: [70.0, 40.0, 190.0, 150.0],
         spatial_grid: HashMap::new(),
+        nets: HashMap::new(),
     };
 
     let state = Rc::new(RefCell::new(AppController {
@@ -344,6 +418,7 @@ pub fn start_cadenceflow_app() {
         parse_time_ms: 0.0,
         is_dragging: false,
         last_mouse: (0.0, 0.0),
+        mouse_down_pos: (0.0, 0.0),
         drop_pin_mode: false,
         pending_pin_coords: None,
         selected_thread_idx: 0,
@@ -421,6 +496,10 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                   ⬇ .WRL 3D
                 </a>
                 <div class="w-px h-4 bg-slate-800"></div>
+                <select id="rust-net-select" class="bg-slate-950 border border-slate-700 text-xs text-emerald-300 rounded px-2 py-1 font-mono max-w-[230px]" title="Select or click any trace/pad/via to X-Ray its electrical net">
+                  <option value="0">🔬 Probe Net (Click trace)...</option>
+                </select>
+                <div class="w-px h-4 bg-slate-800"></div>
                 <button id="btn-drop-pin" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-rose-600 text-slate-200 hover:text-white text-xs font-medium transition-colors">
                   📍 Drop Review Pin
                 </button>
@@ -433,6 +512,12 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                 </div>
               </div>
 
+              <!-- Probed Electrical Net & Signal Length X-Ray Banner -->
+              <div id="net-probe-banner" class="hidden absolute top-16 left-4 z-20 bg-slate-900/95 border border-emerald-500/50 rounded-lg px-3.5 py-2 shadow-2xl flex items-center space-x-3 text-xs font-mono">
+                <div id="net-probe-info"></div>
+                <button id="btn-clear-net" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-rose-600 text-slate-200 hover:text-white text-[11px]">✕ Clear</button>
+              </div>
+
               <!-- Bottom Coordinate, O(1) Spatial Hover Inspector & Rust GPU Telemetry HUD -->
               <div class="absolute bottom-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
                 <div class="bg-slate-900/95 border border-slate-800 rounded-md px-3 py-1.5 shadow-lg flex items-center space-x-3 text-xs font-mono">
@@ -441,7 +526,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                   <div id="rust-hud-stats" class="text-[11px] text-slate-300">Initializing Rust GPU SDF Pipeline...</div>
                 </div>
                 <div id="rust-hover-inspector" class="bg-slate-900/95 border border-slate-800 rounded-md px-3 py-1.5 shadow-lg text-[11px] font-mono text-cyan-300">
-                  O(1) Spatial Grid Ready — Hover any trace, via, or pad
+                  O(1) Spatial Grid Ready — Hover or click any trace, via, or pad to probe net
                 </div>
               </div>
 
@@ -623,9 +708,11 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                 return;
             }
             let mut app = st.borrow_mut();
+            let cx = e.client_x() as f64;
+            let cy = e.client_y() as f64;
             if app.drop_pin_mode {
                 if let Some(ref r) = app.renderer {
-                    let (mm_x, mm_y) = r.screen_to_board_mm(e.client_x() as f64, e.client_y() as f64);
+                    let (mm_x, mm_y) = r.screen_to_board_mm(cx, cy);
                     app.pending_pin_coords = Some((mm_x, mm_y));
                     app.drop_pin_mode = false;
                     if let Some(btn) = app.doc.get_element_by_id("btn-drop-pin") {
@@ -641,7 +728,8 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                 return;
             }
             app.is_dragging = true;
-            app.last_mouse = (e.client_x() as f64, e.client_y() as f64);
+            app.last_mouse = (cx, cy);
+            app.mouse_down_pos = (cx, cy);
         }) as Box<dyn FnMut(_)>);
         let _ =
             canvas.add_event_listener_with_callback("mousedown", on_down.as_ref().unchecked_ref());
@@ -671,7 +759,7 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
             }
 
             let mut coord_pair = (130.0f32, 95.0f32);
-            let mut active_mask = 511u32;
+            let mut active_mask = 4607u32;
             if let Some(ref r) = app.renderer {
                 coord_pair = r.screen_to_board_mm(cx, cy);
                 active_mask = r.active_layer_mask;
@@ -694,7 +782,7 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                     insp.set_text_content(Some(&format!("🔍 {}", info.summary)));
                 } else {
                     insp.set_text_content(Some(
-                        "O(1) Spatial Grid Ready — Hover any trace, via, or pad",
+                        "O(1) Spatial Grid Ready — Hover or click any trace, via, or pad to probe net",
                     ));
                 }
             }
@@ -711,18 +799,71 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
         on_move.forget();
     }
 
-    // Mouse Up / Leave
-    for evt in ["mouseup", "mouseleave"] {
+    // Mouse Up (Detect Click-to-Probe Net vs Drag Pan)
+    {
         let st = state.clone();
-        let on_up = Closure::wrap(Box::new(move |_e: MouseEvent| {
+        let on_up = Closure::wrap(Box::new(move |e: MouseEvent| {
+            let mut app = st.borrow_mut();
+            let was_dragging = app.is_dragging;
+            app.is_dragging = false;
+            if was_dragging && app.active_tab == "pcb" {
+                let dx = (e.client_x() as f64) - app.mouse_down_pos.0;
+                let dy = (e.client_y() as f64) - app.mouse_down_pos.1;
+                if (dx * dx + dy * dy).sqrt() < 5.0 {
+                    // User clicked on the PCB canvas: probe the clicked trace/via/pad's electrical net!
+                    let mut coord_pair = (0.0f32, 0.0f32);
+                    let mut active_mask = 4607u32;
+                    if let Some(ref r) = app.renderer {
+                        coord_pair = r.screen_to_board_mm(e.client_x() as f64, e.client_y() as f64);
+                        active_mask = r.active_layer_mask;
+                    }
+                    let hit = app
+                        .current_board
+                        .query_nearest(coord_pair.0, coord_pair.1, active_mask, 1.8);
+                    let net_to_select = hit.map(|h| h.net_id as i32).unwrap_or(0);
+                    app.select_net_probe(net_to_select);
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = canvas.add_event_listener_with_callback("mouseup", on_up.as_ref().unchecked_ref());
+        on_up.forget();
+    }
+
+    // Mouse Leave
+    {
+        let st = state;
+        let on_leave = Closure::wrap(Box::new(move |_e: MouseEvent| {
             st.borrow_mut().is_dragging = false;
         }) as Box<dyn FnMut(_)>);
-        let _ = canvas.add_event_listener_with_callback(evt, on_up.as_ref().unchecked_ref());
-        on_up.forget();
+        let _ = canvas
+            .add_event_listener_with_callback("mouseleave", on_leave.as_ref().unchecked_ref());
+        on_leave.forget();
     }
 }
 
 fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
+    // Net Probe Dropdown Selector
+    if let Some(net_sel) = doc.get_element_by_id("rust-net-select") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            if let Some(target) = e.target().and_then(|t| t.dyn_into::<HtmlSelectElement>().ok()) {
+                let net_id: i32 = target.value().parse().unwrap_or(0);
+                st.borrow_mut().select_net_probe(net_id);
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = net_sel.add_event_listener_with_callback("change", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // Clear Net Probe Button
+    if let Some(clear_btn) = doc.get_element_by_id("btn-clear-net") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |_e: Event| {
+            st.borrow_mut().select_net_probe(0);
+        }) as Box<dyn FnMut(_)>);
+        let _ = clear_btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
     // Project Selector
     if let Some(sel) = doc.get_element_by_id("rust-project-select") {
         let st = state.clone();
@@ -782,6 +923,8 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
             if let Some(ref mut r) = app.renderer {
                 r.diff_mode = 0.0;
             }
+            app.populate_net_selector();
+            app.select_net_probe(0);
             app.rebuild_gpu_buffer_with_markers();
             if let Some(ref mut r) = app.renderer {
                 r.fit_to_board();
@@ -1320,6 +1463,8 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
                 app.board_rev_a = board_a.clone();
                 app.current_board = board_a;
                 app.parse_time_ms = dt;
+                app.populate_net_selector();
+                app.select_net_probe(0);
                 app.rebuild_gpu_buffer_with_markers();
                 if let Some(ref mut r) = app.renderer {
                     r.fit_to_board();
@@ -1479,6 +1624,7 @@ thread_local! {
         primitive_count: 0,
         bounds: [70.0, 40.0, 190.0, 150.0],
         spatial_grid: HashMap::new(),
+        nets: HashMap::new(),
     });
 }
 

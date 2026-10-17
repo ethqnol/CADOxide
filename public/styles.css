@@ -1000,3 +1000,13 @@
     }
   }
 }
+
+.max-w-\[170px\] {
+  max-width: 170px;
+}
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
