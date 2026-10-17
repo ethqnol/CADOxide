@@ -137,9 +137,88 @@ pub struct UpdateThreadStatusRequest {
     pub status: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PartItem {
+    pub id: String,
+    pub mpn: String,
+    pub manufacturer: String,
+    pub description: String,
+    pub value: String,
+    pub footprint_name: String,
+    pub symbol_name: String,
+    pub lifecycle_status: String,
+    pub unit_price_usd: f64,
+    pub digikey_stock: i64,
+    pub mouser_stock: i64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DesignRevisionItem {
+    pub id: String,
+    pub project_slug: String,
+    pub git_commit_hash: String,
+    pub git_branch: String,
+    pub author_name: String,
+    pub commit_message: String,
+    pub render_status: String,
+    pub glb_3d_asset_url: String,
+    pub created_at: String,
+}
+
 fn init_db(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
         r#"
+        CREATE TABLE IF NOT EXISTS organizations (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            slug TEXT UNIQUE NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            full_name TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS projects (
+            id TEXT PRIMARY KEY,
+            org_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL,
+            description TEXT,
+            visibility TEXT NOT NULL DEFAULT 'private',
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS design_revisions (
+            id TEXT PRIMARY KEY,
+            project_slug TEXT NOT NULL,
+            git_commit_hash TEXT NOT NULL,
+            git_branch TEXT NOT NULL,
+            author_name TEXT NOT NULL,
+            commit_message TEXT NOT NULL,
+            render_status TEXT NOT NULL DEFAULT 'completed',
+            glb_3d_asset_url TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS parts_library (
+            id TEXT PRIMARY KEY,
+            mpn TEXT NOT NULL,
+            manufacturer TEXT NOT NULL,
+            description TEXT NOT NULL,
+            value TEXT NOT NULL,
+            footprint_name TEXT NOT NULL,
+            symbol_name TEXT NOT NULL,
+            lifecycle_status TEXT NOT NULL DEFAULT 'active',
+            unit_price_usd REAL NOT NULL,
+            digikey_stock INTEGER NOT NULL,
+            mouser_stock INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_parts_mpn ON parts_library(mpn);
+
         CREATE TABLE IF NOT EXISTS review_threads (
             id TEXT PRIMARY KEY,
             revision_id TEXT NOT NULL,
@@ -163,6 +242,63 @@ fn init_db(conn: &Connection) -> rusqlite::Result<()> {
         );
         "#,
     )?;
+
+    let parts_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM parts_library", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    if parts_count == 0 {
+        let sample_parts = [
+            ("part-01", "BCM2712-CM5-MINIMA", "Raspberry Pi Ltd", "Compute Module 5 High-Speed B2B Carrier Interface", "CM5-Mod", "Module:RPi_CM5_DF40C_100DS", "MCU_Module:RPi_CM5", "active", 65.00, 4820, 3150),
+            ("part-02", "STM32H743VIT6", "STMicroelectronics", "32-bit ARM Cortex-M7 MCU 480MHz 2MB Flash LQFP-100", "480MHz", "Package_QFP:LQFP-100_14x14mm_P0.5mm", "MCU_ST_STM32H7:STM32H743VITx", "active", 9.42, 18400, 12910),
+            ("part-03", "TPS62130RGTR", "Texas Instruments", "3V-17V 3A Step-Down Buck Converter VQFN-16", "3.3V / 3A", "Package_DFN_QFN:VQFN-16-1EP_3x3mm_P0.5mm", "Regulator_Switching:TPS62130", "active", 1.85, 64200, 41000),
+            ("part-04", "GRM155R71C104KA88D", "Murata Electronics", "MLCC 100nF 16V X7R 0402 Decoupling Capacitor", "100nF", "Capacitor_SMD:C_0402_1005Metric", "Device:C_Small", "active", 0.008, 1250000, 980000),
+            ("part-05", "TUSB8041RGCR", "Texas Instruments", "4-Port USB 3.1 Gen1 SuperSpeed 5Gbps Hub Controller", "USB3-Hub", "Package_DFN_QFN:VQFN-64-1EP_9x9mm_P0.5mm", "Interface_USB:TUSB8041", "nrnd", 4.60, 1420, 610),
+            ("part-06", "LAN7800-I/Y9X", "Microchip Technology", "USB 3.1 Gen1 to 10/100/1000 Gigabit Ethernet Bridge", "GbE-PHY", "Package_DFN_QFN:QFN-48-1EP_6x6mm_P0.4mm", "Interface_Ethernet:LAN7800", "active", 3.95, 9320, 7400),
+            ("part-07", "SI5351A-B-GT", "Skyworks / Silicon Labs", "I2C Programmable Any-Frequency CMOS Clock Generator", "25MHz-PLL", "Package_SO:MSOP-10_3x3mm_P0.5mm", "Oscillator:Si5351A", "obsolete", 2.75, 0, 145),
+            ("part-08", "DF40C-100DS-0.4V(51)", "Hirose Electric", "100-Pos 0.4mm Pitch High-Density Mezzanine Receptacle", "100P-B2B", "Connector_Hirose:Hirose_DF40C_100DS_0.4mm", "Connector_Generic:Conn_02x50", "active", 2.18, 28900, 19500),
+        ];
+
+        for p in sample_parts {
+            conn.execute(
+                "INSERT INTO parts_library (id, mpn, manufacturer, description, value, footprint_name, symbol_name, lifecycle_status, unit_price_usd, digikey_stock, mouser_stock)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![p.0, p.1, p.2, p.3, p.4, p.5, p.6, p.7, p.8, p.9, p.10],
+            )?;
+        }
+
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO design_revisions (id, project_slug, git_commit_hash, git_branch, author_name, commit_message, render_status, glb_3d_asset_url, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                "rev-b-head",
+                "complex_hierarchy",
+                "a551c9c8e12b4901",
+                "main",
+                "ElecLead_Alice",
+                "feat(rf-power): Add +80V HV bias bus, guard vias & impedance matching network",
+                "completed",
+                "/samples/complex_hierarchy/board.wrl",
+                now
+            ],
+        )?;
+        conn.execute(
+            "INSERT INTO design_revisions (id, project_slug, git_commit_hash, git_branch, author_name, commit_message, render_status, glb_3d_asset_url, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                "rev-a-base",
+                "complex_hierarchy",
+                "0e331597f04a1120",
+                "main~1",
+                "MechEng_Bob",
+                "feat(base): Initial 2-layer analog/digital hierarchy placement and routing",
+                "completed",
+                "/samples/complex_hierarchy/board.wrl",
+                now
+            ],
+        )?;
+    }
 
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM review_threads", [], |row| row.get(0))
@@ -778,6 +914,140 @@ async fn update_thread_status(
     Ok(StatusCode::OK)
 }
 
+async fn get_parts(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<PartItem>>, (StatusCode, String)> {
+    let conn = state
+        .db
+        .lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, mpn, manufacturer, description, value, footprint_name, symbol_name, lifecycle_status, unit_price_usd, digikey_stock, mouser_stock
+             FROM parts_library ORDER BY mpn ASC",
+        )
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(PartItem {
+                id: row.get(0)?,
+                mpn: row.get(1)?,
+                manufacturer: row.get(2)?,
+                description: row.get(3)?,
+                value: row.get(4)?,
+                footprint_name: row.get(5)?,
+                symbol_name: row.get(6)?,
+                lifecycle_status: row.get(7)?,
+                unit_price_usd: row.get(8)?,
+                digikey_stock: row.get(9)?,
+                mouser_stock: row.get(10)?,
+            })
+        })
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let mut list = Vec::new();
+    for r in rows {
+        list.push(r.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?);
+    }
+    Ok(Json(list))
+}
+
+async fn get_revisions(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<DesignRevisionItem>>, (StatusCode, String)> {
+    let conn = state
+        .db
+        .lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, project_slug, git_commit_hash, git_branch, author_name, commit_message, render_status, glb_3d_asset_url, created_at
+             FROM design_revisions ORDER BY created_at DESC",
+        )
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(DesignRevisionItem {
+                id: row.get(0)?,
+                project_slug: row.get(1)?,
+                git_commit_hash: row.get(2)?,
+                git_branch: row.get(3)?,
+                author_name: row.get(4)?,
+                commit_message: row.get(5)?,
+                render_status: row.get(6)?,
+                glb_3d_asset_url: row.get(7)?,
+                created_at: row.get(8)?,
+            })
+        })
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let mut list = Vec::new();
+    for r in rows {
+        list.push(r.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?);
+    }
+    Ok(Json(list))
+}
+
+async fn export_3d_vrml(
+    State(state): State<AppState>,
+    Json(payload): Json<DrcRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let base_path = match &payload.project_path {
+        Some(p) if !p.is_empty() => PathBuf::from(p),
+        _ => state
+            .workspace_root
+            .join("public")
+            .join("samples")
+            .join("complex_hierarchy"),
+    };
+    let pcb_path = if PathBuf::from(&payload.pcb_filename).is_absolute() {
+        PathBuf::from(&payload.pcb_filename)
+    } else {
+        base_path.join(&payload.pcb_filename)
+    };
+    let out_path = base_path.join("board.wrl");
+
+    let _permit = state
+        .worker_semaphore
+        .acquire()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let out_str = out_path.to_string_lossy().to_string();
+    let pcb_str = pcb_path.to_string_lossy().to_string();
+
+    let status = tokio::task::spawn_blocking(move || {
+        Command::new("kicad-cli")
+            .env("XDG_CONFIG_HOME", "/tmp/kicad_cfg")
+            .env("XDG_DATA_HOME", "/tmp/kicad_data")
+            .args([
+                "pcb",
+                "export",
+                "vrml",
+                "--units",
+                "mm",
+                "-o",
+                &out_str,
+                &pcb_str,
+            ])
+            .status()
+    })
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    state.jobs_completed.fetch_add(1, Ordering::Relaxed);
+
+    Ok(Json(serde_json::json!({
+        "success": status.success(),
+        "vrml_path": out_path.to_string_lossy(),
+    })))
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -826,6 +1096,9 @@ async fn main() {
         .route("/api/cluster/metrics", get(get_cluster_metrics))
         .route("/api/render-pcb", post(render_pcb))
         .route("/api/execute-drc", post(execute_drc))
+        .route("/api/export-3d", post(export_3d_vrml))
+        .route("/api/parts", get(get_parts))
+        .route("/api/revisions", get(get_revisions))
         .route("/api/threads", get(get_threads).post(create_thread))
         .route("/api/threads/:id/status", post(update_thread_status))
         .route("/api/messages", post(add_message))

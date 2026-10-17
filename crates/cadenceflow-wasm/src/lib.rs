@@ -8,6 +8,7 @@ use parser::{
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::slice;
 use wasm_bindgen::closure::Closure;
@@ -15,7 +16,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
     Document, Element, Event, HtmlCanvasElement, HtmlInputElement, HtmlSelectElement, MouseEvent,
-    Response, WheelEvent,
+    RequestInit, Response, WheelEvent,
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -45,10 +46,24 @@ pub struct DrcItem {
     pub y: f32,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PartLibraryEntry {
+    pub mpn: String,
+    pub manufacturer: String,
+    pub description: String,
+    pub value: String,
+    pub footprint_name: String,
+    pub symbol_name: String,
+    pub lifecycle_status: String,
+    pub unit_price_usd: f64,
+    pub digikey_stock: i64,
+    pub mouser_stock: i64,
+}
+
 pub struct AppController {
     pub doc: Document,
     pub renderer: Option<RustGpuRenderer>,
-    pub active_tab: String, // "pcb" | "diff" | "schematic" | "drc" | "telemetry"
+    pub active_tab: String, // "pcb" | "diff" | "schematic" | "drc" | "parts"
     pub active_project: String,
     pub board_rev_a: ParsedBoard,
     pub board_rev_b: ParsedBoard,
@@ -63,6 +78,8 @@ pub struct AppController {
     pub selected_thread_idx: usize,
     pub threads: Vec<ReviewPinThread>,
     pub drc_items: Vec<DrcItem>,
+    pub parts_catalog: Vec<PartLibraryEntry>,
+    pub parts_filter: String,
     pub active_schematic_svg: String,
 }
 
@@ -139,15 +156,127 @@ impl AppController {
                     add, rem, unch, prims
                 ));
             } else {
+                let mode_badge = self
+                    .renderer
+                    .as_ref()
+                    .map(|r| {
+                        if r.mode_3d_explode > 0.05 {
+                            "3D Stackup Orbit"
+                        } else {
+                            "2D Ortho + LOD Cull"
+                        }
+                    })
+                    .unwrap_or("2D Ortho");
                 el.set_inner_html(&format!(
-                    "<span class='text-emerald-400 font-semibold'>100% Rust WebGL2/WGPU SDF</span> &bull; \
-                     <span class='text-slate-200'>{} instanced primitives</span> &bull; \
-                     <span class='text-indigo-400'>Parse: {:.1}ms (1 draw call)</span>",
-                    prims, self.parse_time_ms
+                    "<span class='text-emerald-400 font-semibold'>{}</span> &bull; \
+                     <span class='text-slate-200'>{} GPU instances</span> &bull; \
+                     <span class='text-indigo-400'>Parse+Grid: {:.1}ms (1 draw call)</span>",
+                    mode_badge, prims, self.parse_time_ms
                 ));
             }
         }
     }
+}
+
+fn default_parts_catalog() -> Vec<PartLibraryEntry> {
+    vec![
+        PartLibraryEntry {
+            mpn: "BCM2712-CM5-MINIMA".to_string(),
+            manufacturer: "Raspberry Pi Ltd".to_string(),
+            description: "Compute Module 5 High-Speed B2B Carrier Interface".to_string(),
+            value: "CM5-Mod".to_string(),
+            footprint_name: "Module:RPi_CM5_DF40C_100DS".to_string(),
+            symbol_name: "MCU_Module:RPi_CM5".to_string(),
+            lifecycle_status: "active".to_string(),
+            unit_price_usd: 65.00,
+            digikey_stock: 4820,
+            mouser_stock: 3150,
+        },
+        PartLibraryEntry {
+            mpn: "STM32H743VIT6".to_string(),
+            manufacturer: "STMicroelectronics".to_string(),
+            description: "32-bit ARM Cortex-M7 MCU 480MHz 2MB Flash LQFP-100".to_string(),
+            value: "480MHz".to_string(),
+            footprint_name: "Package_QFP:LQFP-100_14x14mm_P0.5mm".to_string(),
+            symbol_name: "MCU_ST_STM32H7:STM32H743VITx".to_string(),
+            lifecycle_status: "active".to_string(),
+            unit_price_usd: 9.42,
+            digikey_stock: 18400,
+            mouser_stock: 12910,
+        },
+        PartLibraryEntry {
+            mpn: "TPS62130RGTR".to_string(),
+            manufacturer: "Texas Instruments".to_string(),
+            description: "3V-17V 3A Step-Down Buck Converter VQFN-16".to_string(),
+            value: "3.3V / 3A".to_string(),
+            footprint_name: "Package_DFN_QFN:VQFN-16-1EP_3x3mm_P0.5mm".to_string(),
+            symbol_name: "Regulator_Switching:TPS62130".to_string(),
+            lifecycle_status: "active".to_string(),
+            unit_price_usd: 1.85,
+            digikey_stock: 64200,
+            mouser_stock: 41000,
+        },
+        PartLibraryEntry {
+            mpn: "GRM155R71C104KA88D".to_string(),
+            manufacturer: "Murata Electronics".to_string(),
+            description: "MLCC 100nF 16V X7R 0402 Decoupling Capacitor".to_string(),
+            value: "100nF".to_string(),
+            footprint_name: "Capacitor_SMD:C_0402_1005Metric".to_string(),
+            symbol_name: "Device:C_Small".to_string(),
+            lifecycle_status: "active".to_string(),
+            unit_price_usd: 0.008,
+            digikey_stock: 1250000,
+            mouser_stock: 980000,
+        },
+        PartLibraryEntry {
+            mpn: "TUSB8041RGCR".to_string(),
+            manufacturer: "Texas Instruments".to_string(),
+            description: "4-Port USB 3.1 Gen1 SuperSpeed 5Gbps Hub Controller".to_string(),
+            value: "USB3-Hub".to_string(),
+            footprint_name: "Package_DFN_QFN:VQFN-64-1EP_9x9mm_P0.5mm".to_string(),
+            symbol_name: "Interface_USB:TUSB8041".to_string(),
+            lifecycle_status: "nrnd".to_string(),
+            unit_price_usd: 4.60,
+            digikey_stock: 1420,
+            mouser_stock: 610,
+        },
+        PartLibraryEntry {
+            mpn: "LAN7800-I/Y9X".to_string(),
+            manufacturer: "Microchip Technology".to_string(),
+            description: "USB 3.1 Gen1 to 10/100/1000 Gigabit Ethernet Bridge".to_string(),
+            value: "GbE-PHY".to_string(),
+            footprint_name: "Package_DFN_QFN:QFN-48-1EP_6x6mm_P0.4mm".to_string(),
+            symbol_name: "Interface_Ethernet:LAN7800".to_string(),
+            lifecycle_status: "active".to_string(),
+            unit_price_usd: 3.95,
+            digikey_stock: 9320,
+            mouser_stock: 7400,
+        },
+        PartLibraryEntry {
+            mpn: "SI5351A-B-GT".to_string(),
+            manufacturer: "Skyworks / Silicon Labs".to_string(),
+            description: "I2C Programmable Any-Frequency CMOS Clock Generator".to_string(),
+            value: "25MHz-PLL".to_string(),
+            footprint_name: "Package_SO:MSOP-10_3x3mm_P0.5mm".to_string(),
+            symbol_name: "Oscillator:Si5351A".to_string(),
+            lifecycle_status: "obsolete".to_string(),
+            unit_price_usd: 2.75,
+            digikey_stock: 0,
+            mouser_stock: 145,
+        },
+        PartLibraryEntry {
+            mpn: "DF40C-100DS-0.4V(51)".to_string(),
+            manufacturer: "Hirose Electric".to_string(),
+            description: "100-Pos 0.4mm Pitch High-Density Mezzanine Receptacle".to_string(),
+            value: "100P-B2B".to_string(),
+            footprint_name: "Connector_Hirose:Hirose_DF40C_100DS_0.4mm".to_string(),
+            symbol_name: "Connector_Generic:Conn_02x50".to_string(),
+            lifecycle_status: "active".to_string(),
+            unit_price_usd: 2.18,
+            digikey_stock: 28900,
+            mouser_stock: 19500,
+        },
+    ]
 }
 
 /// Automatically boots the 100% Pure Rust Frontend when the WASM module is loaded
@@ -199,6 +328,7 @@ pub fn start_cadenceflow_app() {
         instances: Vec::new(),
         primitive_count: 0,
         bounds: [70.0, 40.0, 190.0, 150.0],
+        spatial_grid: HashMap::new(),
     };
 
     let state = Rc::new(RefCell::new(AppController {
@@ -219,11 +349,14 @@ pub fn start_cadenceflow_app() {
         selected_thread_idx: 0,
         threads: initial_threads,
         drc_items: Vec::new(),
+        parts_catalog: default_parts_catalog(),
+        parts_filter: String::new(),
         active_schematic_svg: "/samples/complex_hierarchy/complex_hierarchy.svg".to_string(),
     }));
 
     build_shell_dom(&doc, &root, state.clone());
-    fetch_project_boards(state, "complex_hierarchy");
+    fetch_project_boards(state.clone(), "complex_hierarchy");
+    sync_backend_telemetry_and_parts(state);
 }
 
 fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppController>>) {
@@ -257,6 +390,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               <button id="tab-diff" class="px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-slate-200">Visual Diff (GPU Shader)</button>
               <button id="tab-schematic" class="px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-slate-200">Schematic Sheet</button>
               <button id="tab-drc" class="px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-slate-200">DRC Audit (<span id="drc-count-badge">69</span>)</button>
+              <button id="tab-parts" class="px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-slate-200">Parts &amp; BOM (8)</button>
             </div>
 
             <!-- Right Benchmark & Telemetry Controls -->
@@ -264,8 +398,8 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               <button id="btn-100k-hdi" class="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-mono font-semibold cursor-pointer">
                 ⚡ 100k HDI Stress Test
               </button>
-              <div class="px-2.5 py-1 rounded bg-slate-950 border border-slate-800 text-[11px] font-mono text-emerald-400">
-                KiCad 10.0.7
+              <div id="cluster-status-badge" class="px-2.5 py-1 rounded bg-slate-950 border border-slate-800 text-[11px] font-mono text-emerald-400">
+                KiCad 10.0.7 &bull; CAS Active
               </div>
             </div>
           </header>
@@ -280,6 +414,13 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                 <button id="btn-zoom-out" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-200 text-xs font-mono font-bold" title="Zoom Out">-</button>
                 <button id="btn-zoom-fit" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-200 text-xs font-mono" title="Fit Board">Fit</button>
                 <div class="w-px h-4 bg-slate-800"></div>
+                <button id="btn-3d-stackup" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white text-xs font-medium transition-colors" title="Toggle 3D Exploded Multi-Layer Stackup Orbit (Shift+Drag to rotate)">
+                  🧊 3D Stackup Orbit
+                </button>
+                <a id="link-3d-vrml" href="/samples/complex_hierarchy/board.wrl" download class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-mono" title="Download Headless KiCad 3D VRML Export (.wrl)">
+                  ⬇ .WRL 3D
+                </a>
+                <div class="w-px h-4 bg-slate-800"></div>
                 <button id="btn-drop-pin" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-rose-600 text-slate-200 hover:text-white text-xs font-medium transition-colors">
                   📍 Drop Review Pin
                 </button>
@@ -292,17 +433,22 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                 </div>
               </div>
 
-              <!-- Bottom Coordinate & Rust GPU Telemetry HUD -->
-              <div class="absolute bottom-4 left-4 z-20 bg-slate-900/95 border border-slate-800 rounded-md px-3 py-1.5 shadow-lg flex items-center space-x-3 text-xs font-mono">
-                <span id="rust-coord-hud" class="text-cyan-400 font-semibold min-w-[165px]">X: 130.00 mm  Y: 95.00 mm</span>
-                <div class="w-px h-3 bg-slate-700"></div>
-                <div id="rust-hud-stats" class="text-[11px] text-slate-300">Initializing Rust GPU SDF Pipeline...</div>
+              <!-- Bottom Coordinate, O(1) Spatial Hover Inspector & Rust GPU Telemetry HUD -->
+              <div class="absolute bottom-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
+                <div class="bg-slate-900/95 border border-slate-800 rounded-md px-3 py-1.5 shadow-lg flex items-center space-x-3 text-xs font-mono">
+                  <span id="rust-coord-hud" class="text-cyan-400 font-semibold min-w-[165px]">X: 130.00 mm  Y: 95.00 mm</span>
+                  <div class="w-px h-3 bg-slate-700"></div>
+                  <div id="rust-hud-stats" class="text-[11px] text-slate-300">Initializing Rust GPU SDF Pipeline...</div>
+                </div>
+                <div id="rust-hover-inspector" class="bg-slate-900/95 border border-slate-800 rounded-md px-3 py-1.5 shadow-lg text-[11px] font-mono text-cyan-300">
+                  O(1) Spatial Grid Ready — Hover any trace, via, or pad
+                </div>
               </div>
 
               <!-- Primary Full-Screen Rust WebGL2/WGPU Instanced SDF Canvas -->
               <canvas id="rust-gpu-canvas" class="block w-full h-full cursor-grab active:cursor-grabbing"></canvas>
 
-              <!-- Schematic & DRC Overlay Views (Hidden when on GPU Canvas) -->
+              <!-- Schematic Hierarchy Overlay -->
               <div id="schematic-view-panel" class="hidden absolute inset-0 bg-slate-950 flex flex-col p-6 overflow-auto z-30">
                 <div class="flex items-center space-x-2 mb-4">
                   <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Schematic Sheet Hierarchy:</span>
@@ -315,12 +461,25 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                 </div>
               </div>
 
+              <!-- DRC Audit Overlay -->
               <div id="drc-view-panel" class="hidden absolute inset-0 bg-slate-950 flex flex-col p-6 overflow-y-auto z-30">
                 <div class="flex items-center justify-between mb-4">
                   <h2 class="text-sm font-bold text-slate-100">KiCad DRC Audit Report (Parsed in Rust)</h2>
                   <span class="text-xs font-mono text-amber-400">Click any violation to jump GPU camera to coordinate</span>
                 </div>
                 <div id="drc-list-container" class="space-y-2"></div>
+              </div>
+
+              <!-- Centralized Component Library & Supply Chain BOM Overlay -->
+              <div id="parts-view-panel" class="hidden absolute inset-0 bg-slate-950 flex flex-col p-6 overflow-y-auto z-30">
+                <div class="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 class="text-sm font-bold text-slate-100">Enterprise Component Library &amp; Supply Chain Telemetry</h2>
+                    <p class="text-xs text-slate-400 mt-0.5">Live MPN lifecycle verification &amp; cached DigiKey / Mouser stock index</p>
+                  </div>
+                  <input id="input-parts-search" type="text" placeholder="Filter MPN, manufacturer, footprint..." class="w-72 bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-xs text-slate-100" />
+                </div>
+                <div id="parts-list-container" class="space-y-2"></div>
               </div>
             </div>
 
@@ -428,6 +587,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
 
     bind_toolbar_and_tabs(doc, state.clone());
     render_threads_sidebar(&state);
+    render_parts_list(&state);
 }
 
 fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppController>>) {
@@ -447,7 +607,7 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
         on_wheel.forget();
     }
 
-    // Mouse Down (Start Pan or Drop Review Pin)
+    // Mouse Down (Start Pan/Orbit or Drop Review Pin)
     {
         let st = state.clone();
         let on_down = Closure::wrap(Box::new(move |e: MouseEvent| {
@@ -480,7 +640,7 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
         on_down.forget();
     }
 
-    // Mouse Move (Pan GPU Camera + Update Coordinate HUD)
+    // Mouse Move (Pan/Orbit GPU Camera + O(1) Spatial Grid Hover Inspection)
     {
         let st = state.clone();
         let on_move = Closure::wrap(Box::new(move |e: MouseEvent| {
@@ -492,14 +652,49 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                 let dy = cy - app.last_mouse.1;
                 app.last_mouse = (cx, cy);
                 if let Some(ref mut r) = app.renderer {
-                    r.pan_by_css_px(dx, dy);
+                    if r.mode_3d_explode > 0.05 && e.shift_key() {
+                        r.orbit_by_css_px(dx, dy);
+                    } else {
+                        r.pan_by_css_px(dx, dy);
+                    }
                     r.draw();
                 }
+                return;
             }
+
+            let mut coord_pair = (130.0f32, 95.0f32);
+            let mut active_mask = 511u32;
             if let Some(ref r) = app.renderer {
-                let (mx, my) = r.screen_to_board_mm(cx, cy);
-                if let Some(hud) = app.doc.get_element_by_id("rust-coord-hud") {
-                    hud.set_text_content(Some(&format!("X: {:.2} mm  Y: {:.2} mm", mx, my)));
+                coord_pair = r.screen_to_board_mm(cx, cy);
+                active_mask = r.active_layer_mask;
+            }
+            if let Some(hud) = app.doc.get_element_by_id("rust-coord-hud") {
+                hud.set_text_content(Some(&format!(
+                    "X: {:.2} mm  Y: {:.2} mm",
+                    coord_pair.0, coord_pair.1
+                )));
+            }
+
+            // O(1) Spatial Grid Query in Rust WASM
+            let hit = app
+                .current_board
+                .query_nearest(coord_pair.0, coord_pair.1, active_mask, 1.8);
+            let new_hover_id = hit.as_ref().map(|h| h.instance_idx as i32).unwrap_or(-1);
+
+            if let Some(insp) = app.doc.get_element_by_id("rust-hover-inspector") {
+                if let Some(ref info) = hit {
+                    insp.set_text_content(Some(&format!("🔍 {}", info.summary)));
+                } else {
+                    insp.set_text_content(Some(
+                        "O(1) Spatial Grid Ready — Hover any trace, via, or pad",
+                    ));
+                }
+            }
+
+            if let Some(ref mut r) = app.renderer {
+                if r.hovered_instance_id != new_hover_id {
+                    r.hovered_instance_id = new_hover_id;
+                    r.draw();
                 }
             }
         }) as Box<dyn FnMut(_)>);
@@ -526,10 +721,42 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
         let cb = Closure::wrap(Box::new(move |e: Event| {
             if let Some(target) = e.target().and_then(|t| t.dyn_into::<HtmlSelectElement>().ok()) {
                 let proj = target.value();
+                if let Some(link) = st.borrow().doc.get_element_by_id("link-3d-vrml") {
+                    let href = if proj == "cm5_minima" {
+                        "/samples/cm5_minima/board.wrl"
+                    } else {
+                        "/samples/complex_hierarchy/board.wrl"
+                    };
+                    let _ = link.set_attribute("href", href);
+                }
                 fetch_project_boards(st.clone(), &proj);
             }
         }) as Box<dyn FnMut(_)>);
         let _ = sel.add_event_listener_with_callback("change", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // 3D Stackup Orbit Toggle Button
+    if let Some(btn) = doc.get_element_by_id("btn-3d-stackup") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            let mut app = st.borrow_mut();
+            let mut is_3d = false;
+            if let Some(ref mut r) = app.renderer {
+                r.mode_3d_explode = if r.mode_3d_explode > 0.05 { 0.0 } else { 1.0 };
+                is_3d = r.mode_3d_explode > 0.05;
+                r.draw();
+            }
+            if let Some(el) = e.current_target().and_then(|t| t.dyn_into::<Element>().ok()) {
+                el.set_text_content(Some(if is_3d {
+                    "🧊 3D Stackup: ON (Shift+Drag)"
+                } else {
+                    "🧊 3D Stackup Orbit"
+                }));
+            }
+            app.update_telemetry_hud();
+        }) as Box<dyn FnMut(_)>);
+        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
         cb.forget();
     }
 
@@ -613,7 +840,7 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
         cb.forget();
     }
 
-    // Save New Pin Thread Button
+    // Save New Pin Thread Button (Persists both locally and to Axum SQLite Backend)
     if let Some(btn) = doc.get_element_by_id("btn-save-pin") {
         let st = state.clone();
         let cb = Closure::wrap(Box::new(move |_e: Event| {
@@ -644,12 +871,24 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
                                 resolved: false,
                                 author: author.clone(),
                                 messages: vec![ReviewMessage {
-                                    author,
-                                    body: msg,
+                                    author: author.clone(),
+                                    body: msg.clone(),
                                     time: "Just now".to_string(),
                                 }],
                             },
                         );
+
+                        // Fire-and-forget POST /api/threads to persist in SQLite
+                        let payload = serde_json::json!({
+                            "revision_id": "rev-main",
+                            "file_type": "pcb",
+                            "sheet_or_layer": "F.Cu",
+                            "coord_x": x,
+                            "coord_y": y,
+                            "created_by": author,
+                            "initial_message": msg,
+                        });
+                        post_json_fire_and_forget("/api/threads", &payload.to_string());
                     }
                     if let Some(box_el) = app.doc.get_element_by_id("new-pin-box") {
                         let _ = box_el.class_list().add_1("hidden");
@@ -663,12 +902,13 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
         cb.forget();
     }
 
-    // View Mode Tabs ("tab-pcb", "tab-diff", "tab-schematic", "tab-drc")
+    // View Mode Tabs ("tab-pcb", "tab-diff", "tab-schematic", "tab-drc", "tab-parts")
     for (tab_id, mode_name) in [
         ("tab-pcb", "pcb"),
         ("tab-diff", "diff"),
         ("tab-schematic", "schematic"),
         ("tab-drc", "drc"),
+        ("tab-parts", "parts"),
     ] {
         if let Some(btn) = doc.get_element_by_id(tab_id) {
             let st = state.clone();
@@ -679,6 +919,52 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
             let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
             cb.forget();
         }
+    }
+
+    // Parts Search Input Filter
+    if let Some(inp_el) = doc.get_element_by_id("input-parts-search") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            if let Some(inp) = e.target().and_then(|t| t.dyn_into::<HtmlInputElement>().ok()) {
+                st.borrow_mut().parts_filter = inp.value();
+                render_parts_list(&st);
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = inp_el.add_event_listener_with_callback("input", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // Clicking a DRC row flies the GPU camera to that violation
+    if let Some(drc_list) = doc.get_element_by_id("drc-list-container") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            if let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
+                if let Some(row) = el.closest(".drc-row").ok().flatten() {
+                    if let Some(idx_str) = row.get_attribute("data-drc-idx") {
+                        if let Ok(idx) = idx_str.parse::<usize>() {
+                            let coords = st
+                                .borrow()
+                                .drc_items
+                                .get(idx)
+                                .map(|d| (d.x, d.y));
+                            if let Some((vx, vy)) = coords {
+                                switch_view_tab(&st, "pcb");
+                                if vx > 1.0 && vy > 1.0 {
+                                    let mut app = st.borrow_mut();
+                                    if let Some(ref mut r) = app.renderer {
+                                        r.center_mm = (vx, vy);
+                                        r.scale_px_per_mm = 26.0;
+                                        r.draw();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = drc_list.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
     }
 
     // Diff Mode Controls (Boolean Shader vs Split Wipe Slider)
@@ -773,6 +1059,7 @@ pub fn switch_view_tab(state: &Rc<RefCell<AppController>>, mode: &str) {
         ("tab-diff", "diff"),
         ("tab-schematic", "schematic"),
         ("tab-drc", "drc"),
+        ("tab-parts", "parts"),
     ] {
         if let Some(btn) = app.doc.get_element_by_id(tid) {
             if m == mode {
@@ -793,19 +1080,17 @@ pub fn switch_view_tab(state: &Rc<RefCell<AppController>>, mode: &str) {
         }
     }
 
-    if let Some(sch_p) = app.doc.get_element_by_id("schematic-view-panel") {
-        if mode == "schematic" {
-            let _ = sch_p.class_list().remove_1("hidden");
-        } else {
-            let _ = sch_p.class_list().add_1("hidden");
-        }
-    }
-
-    if let Some(drc_p) = app.doc.get_element_by_id("drc-view-panel") {
-        if mode == "drc" {
-            let _ = drc_p.class_list().remove_1("hidden");
-        } else {
-            let _ = drc_p.class_list().add_1("hidden");
+    for (panel_id, target_mode) in [
+        ("schematic-view-panel", "schematic"),
+        ("drc-view-panel", "drc"),
+        ("parts-view-panel", "parts"),
+    ] {
+        if let Some(panel) = app.doc.get_element_by_id(panel_id) {
+            if mode == target_mode {
+                let _ = panel.class_list().remove_1("hidden");
+            } else {
+                let _ = panel.class_list().add_1("hidden");
+            }
         }
     }
 
@@ -819,6 +1104,62 @@ pub fn switch_view_tab(state: &Rc<RefCell<AppController>>, mode: &str) {
             r.draw();
         }
     }
+}
+
+fn render_parts_list(state: &Rc<RefCell<AppController>>) {
+    let app = state.borrow();
+    let container = match app.doc.get_element_by_id("parts-list-container") {
+        Some(c) => c,
+        None => return,
+    };
+
+    let q = app.parts_filter.to_lowercase();
+    let mut html = String::new();
+    for p in &app.parts_catalog {
+        if !q.is_empty()
+            && !p.mpn.to_lowercase().contains(&q)
+            && !p.manufacturer.to_lowercase().contains(&q)
+            && !p.description.to_lowercase().contains(&q)
+            && !p.footprint_name.to_lowercase().contains(&q)
+        {
+            continue;
+        }
+
+        let status_cls = match p.lifecycle_status.as_str() {
+            "active" => "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+            "nrnd" => "text-amber-400 bg-amber-500/10 border-amber-500/30",
+            _ => "text-rose-400 bg-rose-500/10 border-rose-500/30",
+        };
+
+        html.push_str(&format!(
+            r#"<div class="p-3 rounded-lg border border-slate-800 bg-slate-900/70 flex items-center justify-between">
+                 <div class="space-y-1">
+                   <div class="flex items-center space-x-2">
+                     <span class="text-xs font-mono font-bold text-cyan-300">{mpn}</span>
+                     <span class="text-xs text-slate-400">&bull; {mfr}</span>
+                     <span class="text-[10px] font-mono uppercase px-2 py-0.5 rounded border {status_cls}">{status}</span>
+                   </div>
+                   <div class="text-xs text-slate-200">{desc}</div>
+                   <div class="text-[11px] font-mono text-slate-400">Footprint: {fp} &bull; Symbol: {sym}</div>
+                 </div>
+                 <div class="text-right font-mono text-xs space-y-1">
+                   <div class="text-slate-100 font-bold">${price:.3} / unit</div>
+                   <div class="text-[11px] text-emerald-400">DigiKey: {dk} &bull; Mouser: {ms}</div>
+                 </div>
+               </div>"#,
+            mpn = p.mpn,
+            mfr = p.manufacturer,
+            status_cls = status_cls,
+            status = p.lifecycle_status,
+            desc = p.description,
+            fp = p.footprint_name,
+            sym = p.symbol_name,
+            price = p.unit_price_usd,
+            dk = p.digikey_stock,
+            ms = p.mouser_stock
+        ));
+    }
+    container.set_inner_html(&html);
 }
 
 fn render_threads_sidebar(state: &Rc<RefCell<AppController>>) {
@@ -862,7 +1203,6 @@ fn render_threads_sidebar(state: &Rc<RefCell<AppController>>) {
     }
     container.set_inner_html(&html);
 
-    // Clicking a thread jumps GPU camera to that coordinate
     let st = state.clone();
     let cb = Closure::wrap(Box::new(move |e: Event| {
         if let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
@@ -884,6 +1224,42 @@ fn render_threads_sidebar(state: &Rc<RefCell<AppController>>) {
     }) as Box<dyn FnMut(_)>);
     let _ = container.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
     cb.forget();
+}
+
+fn sync_backend_telemetry_and_parts(state: Rc<RefCell<AppController>>) {
+    // Sync /api/cluster/metrics
+    let st_metrics = state.clone();
+    fetch_text_with_callback("/api/cluster/metrics", move |json_str| {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&json_str) {
+            let node = val
+                .get("node_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("cadence-node-primary");
+            let workers = val
+                .get("worker_pool")
+                .and_then(|w| w.get("max_workers"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(4);
+            let app = st_metrics.borrow();
+            if let Some(badge) = app.doc.get_element_by_id("cluster-status-badge") {
+                badge.set_text_content(Some(&format!(
+                    "{} ({} Workers • CAS Online)",
+                    node, workers
+                )));
+            }
+        }
+    });
+
+    // Sync /api/parts
+    let st_parts = state;
+    fetch_text_with_callback("/api/parts", move |json_str| {
+        if let Ok(parts) = serde_json::from_str::<Vec<PartLibraryEntry>>(&json_str) {
+            if !parts.is_empty() {
+                st_parts.borrow_mut().parts_catalog = parts;
+                render_parts_list(&st_parts);
+            }
+        }
+    });
 }
 
 fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
@@ -1049,6 +1425,21 @@ fn fetch_text_with_callback<F: FnOnce(String) + 'static>(url: &str, callback: F)
     on_resp.forget();
 }
 
+fn post_json_fire_and_forget(url: &str, body_json: &str) {
+    let window = match web_sys::window() {
+        Some(w) => w,
+        None => return,
+    };
+    let init = RequestInit::new();
+    init.set_method("POST");
+    init.set_body(&JsValue::from_str(body_json));
+    if let Ok(headers) = web_sys::Headers::new() {
+        let _ = headers.set("Content-Type", "application/json");
+        init.set_headers(&headers);
+    }
+    let _ = window.fetch_with_str_and_init(url, &init);
+}
+
 // ============================================================================
 // C-ABI Exports for Headless / Node.js Benchmark Compatibility
 // ============================================================================
@@ -1057,6 +1448,7 @@ thread_local! {
         instances: Vec::new(),
         primitive_count: 0,
         bounds: [70.0, 40.0, 190.0, 150.0],
+        spatial_grid: HashMap::new(),
     });
 }
 

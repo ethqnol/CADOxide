@@ -1,20 +1,20 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "cadenceflow",
-  "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "version": "2.0.0",
+  "identifier": "io.cadenceflow.desktop",
   "build": {
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:5173",
+    "frontendDist": "../public",
+    "devUrl": "http://localhost:8080",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
       {
-        "title": "CadenceFlow",
-        "width": 800,
-        "height": 600,
+        "title": "CadenceFlow — 100% Pure Rust WASM + Instanced GPU SDF Engine",
+        "width": 1440,
+        "height": 900,
         "resizable": true,
         "fullscreen": false
       }

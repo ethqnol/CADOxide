@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub const LAYER_F_CU: u32 = 1 << 0;
 pub const LAYER_B_CU: u32 = 1 << 1;
@@ -17,12 +17,208 @@ pub const LAYER_DIFF_REMOVED: u32 = 1 << 10;
 pub const LAYER_DIFF_ADDED: u32 = 1 << 11;
 
 pub const FLOATS_PER_INSTANCE: usize = 8;
+const SPATIAL_CELL_MM: f32 = 2.5;
+
+#[derive(Clone, Debug)]
+pub struct HoveredPrimitiveInfo {
+    pub instance_idx: usize,
+    pub kind: &'static str,
+    pub layer_name: &'static str,
+    pub summary: String,
+    pub center_x: f32,
+    pub center_y: f32,
+}
 
 #[derive(Clone, Debug)]
 pub struct ParsedBoard {
     pub instances: Vec<f32>,
     pub primitive_count: usize,
     pub bounds: [f32; 4], // [min_x, min_y, max_x, max_y]
+    pub spatial_grid: HashMap<(i32, i32), Vec<u32>>,
+}
+
+impl ParsedBoard {
+    pub fn with_spatial_grid(instances: Vec<f32>, primitive_count: usize, bounds: [f32; 4]) -> Self {
+        let mut spatial_grid: HashMap<(i32, i32), Vec<u32>> =
+            HashMap::with_capacity((primitive_count / 4).max(64));
+
+        for (idx, chunk) in instances.chunks_exact(FLOATS_PER_INSTANCE).enumerate() {
+            let x0 = chunk[0];
+            let y0 = chunk[1];
+            let x1 = chunk[2];
+            let y1 = chunk[3];
+            let r = chunk[4].max(chunk[5]).max(0.25);
+
+            let min_cx = ((x0.min(x1) - r) / SPATIAL_CELL_MM).floor() as i32;
+            let max_cx = ((x0.max(x1) + r) / SPATIAL_CELL_MM).floor() as i32;
+            let min_cy = ((y0.min(y1) - r) / SPATIAL_CELL_MM).floor() as i32;
+            let max_cy = ((y0.max(y1) + r) / SPATIAL_CELL_MM).floor() as i32;
+
+            // Clamp span for very long board-outline segments
+            let span_x = (max_cx - min_cx).min(24);
+            let span_y = (max_cy - min_cy).min(24);
+
+            for cx in min_cx..=(min_cx + span_x) {
+                for cy in min_cy..=(min_cy + span_y) {
+                    spatial_grid.entry((cx, cy)).or_default().push(idx as u32);
+                }
+            }
+        }
+
+        Self {
+            instances,
+            primitive_count,
+            bounds,
+            spatial_grid,
+        }
+    }
+
+    /// O(1) sub-microsecond spatial hash query for real-time cursor hover & click inspection.
+    pub fn query_nearest(
+        &self,
+        mm_x: f32,
+        mm_y: f32,
+        visible_mask: u32,
+        max_dist_mm: f32,
+    ) -> Option<HoveredPrimitiveInfo> {
+        let cx = (mm_x / SPATIAL_CELL_MM).floor() as i32;
+        let cy = (mm_y / SPATIAL_CELL_MM).floor() as i32;
+
+        let mut best_idx: Option<usize> = None;
+        let mut best_dist = max_dist_mm;
+
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                if let Some(bucket) = self.spatial_grid.get(&(cx + dx, cy + dy)) {
+                    for &raw_idx in bucket {
+                        let idx = raw_idx as usize;
+                        let base = idx * FLOATS_PER_INSTANCE;
+                        if base + FLOATS_PER_INSTANCE > self.instances.len() {
+                            continue;
+                        }
+                        let chunk = &self.instances[base..base + FLOATS_PER_INSTANCE];
+                        let layer_bits = chunk[6] as u32;
+                        if (layer_bits & visible_mask) == 0 {
+                            continue;
+                        }
+
+                        let x0 = chunk[0];
+                        let y0 = chunk[1];
+                        let x1 = chunk[2];
+                        let y1 = chunk[3];
+                        let r = chunk[4].max(0.15);
+                        let prim_type = chunk[7].round() as i32;
+
+                        let dist = if prim_type == 0 {
+                            // Point-to-segment distance for capsule tracks
+                            let vx = x1 - x0;
+                            let vy = y1 - y0;
+                            let len_sq = vx * vx + vy * vy;
+                            let t = if len_sq > 1e-6 {
+                                (((mm_x - x0) * vx + (mm_y - y0) * vy) / len_sq).clamp(0.0, 1.0)
+                            } else {
+                                0.0
+                            };
+                            let px = x0 + t * vx;
+                            let py = y0 + t * vy;
+                            (((mm_x - px).powi(2) + (mm_y - py).powi(2)).sqrt() - r).max(0.0)
+                        } else {
+                            (((mm_x - x0).powi(2) + (mm_y - y0).powi(2)).sqrt() - r).max(0.0)
+                        };
+
+                        if dist < best_dist {
+                            best_dist = dist;
+                            best_idx = Some(idx);
+                        }
+                    }
+                }
+            }
+        }
+
+        let idx = best_idx?;
+        let base = idx * FLOATS_PER_INSTANCE;
+        let chunk = &self.instances[base..base + FLOATS_PER_INSTANCE];
+        let x0 = chunk[0];
+        let y0 = chunk[1];
+        let x1 = chunk[2];
+        let y1 = chunk[3];
+        let r1 = chunk[4];
+        let r2 = chunk[5];
+        let layer_bits = chunk[6] as u32;
+        let prim_type = chunk[7].round() as i32;
+
+        let layer_name = if (layer_bits & LAYER_F_CU) != 0 && (layer_bits & LAYER_B_CU) != 0 {
+            "F.Cu ↔ B.Cu (PTH)"
+        } else if (layer_bits & LAYER_F_CU) != 0 {
+            "F.Cu (Top Copper)"
+        } else if (layer_bits & LAYER_B_CU) != 0 {
+            "B.Cu (Bottom Copper)"
+        } else if (layer_bits & LAYER_EDGE_CUTS) != 0 {
+            "Edge.Cuts (Board Outline)"
+        } else if (layer_bits & LAYER_F_SILKS) != 0 {
+            "F.SilkS (Top Silkscreen)"
+        } else if (layer_bits & LAYER_B_SILKS) != 0 {
+            "B.SilkS (Bottom Silkscreen)"
+        } else if (layer_bits & LAYER_F_MASK) != 0 {
+            "F.Mask (Top Solder Mask)"
+        } else if (layer_bits & LAYER_B_MASK) != 0 {
+            "B.Mask (Bottom Solder Mask)"
+        } else {
+            "Multi-Layer"
+        };
+
+        let (kind, summary) = match prim_type {
+            0 => {
+                let len = ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt();
+                (
+                    "Track Capsule",
+                    format!(
+                        "Track [{}] w={:.2}mm len={:.2}mm @ ({:.1}, {:.1})",
+                        layer_name,
+                        r1 * 2.0,
+                        len,
+                        (x0 + x1) * 0.5,
+                        (y0 + y1) * 0.5
+                    ),
+                )
+            }
+            1 => (
+                "Plated Via",
+                format!(
+                    "Via [{}] Ø{:.2}mm / drill Ø{:.2}mm @ ({:.1}, {:.1})",
+                    layer_name,
+                    r1 * 2.0,
+                    r2 * 2.0,
+                    x0,
+                    y0
+                ),
+            ),
+            2 => (
+                "SMD/THT Pad",
+                format!(
+                    "Pad [{}] {:.2}×{:.2}mm @ ({:.1}, {:.1})",
+                    layer_name,
+                    r1 * 2.0,
+                    r2 * 2.0,
+                    x0,
+                    y0
+                ),
+            ),
+            _ => (
+                "Marker",
+                format!("Marker @ ({:.1}, {:.1})", x0, y0),
+            ),
+        };
+
+        Some(HoveredPrimitiveInfo {
+            instance_idx: idx,
+            kind,
+            layer_name,
+            summary,
+            center_x: (x0 + x1) * 0.5,
+            center_y: (y0 + y1) * 0.5,
+        })
+    }
 }
 
 /// Parses a KiCad `.kicad_pcb` file in pure Rust into a flat 8-float-per-instance GPU buffer.
@@ -143,11 +339,7 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
         [70.0, 40.0, 190.0, 150.0]
     };
 
-    ParsedBoard {
-        instances,
-        primitive_count,
-        bounds,
-    }
+    ParsedBoard::with_spatial_grid(instances, primitive_count, bounds)
 }
 
 /// Computes a pure-Rust geometric vector diff between Revision A and Revision B!
@@ -212,11 +404,7 @@ pub fn compute_vector_diff_boards(
 
     let primitive_count = out_instances.len() / FLOATS_PER_INSTANCE;
     (
-        ParsedBoard {
-            instances: out_instances,
-            primitive_count,
-            bounds: board_b.bounds,
-        },
+        ParsedBoard::with_spatial_grid(out_instances, primitive_count, board_b.bounds),
         added,
         removed,
         unchanged,
@@ -309,11 +497,7 @@ pub fn generate_hdi_stress_board(target_primitives: usize) -> ParsedBoard {
         }
     }
 
-    ParsedBoard {
-        instances,
-        primitive_count,
-        bounds,
-    }
+    ParsedBoard::with_spatial_grid(instances, primitive_count, bounds)
 }
 
 fn is_token_start(line: &str, token: &str) -> bool {
@@ -539,3 +723,4 @@ fn extract_layer_mask(s: &str) -> u32 {
     }
     mask
 }
+

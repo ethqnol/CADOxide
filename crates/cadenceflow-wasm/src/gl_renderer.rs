@@ -13,6 +13,7 @@ layout(location = 1) in vec4 a_params;
 uniform vec4 u_center_and_scale;        // x: centerX_mm, y: centerY_mm, z: scale_px_per_mm, w: active_layer_mask
 uniform vec4 u_viewport_and_opacities;  // x: width_px, y: height_px, z: f_cu_alpha, w: b_cu_alpha
 uniform vec4 u_diff_params;             // x: is_diff_view (0=normal, 1=blend, 2=wipe), y: wipe_ratio (0..1), z: silk_alpha, w: mask_alpha
+uniform vec4 u_3d_and_hover;            // x: mode_3d (0=2D, >0=3D Z-explosion), y: yaw_rad, z: pitch_rad, w: hovered_instance_id (-1 = none)
 
 out vec2 v_local_pos;
 out vec2 v_seg_len_and_r;
@@ -20,12 +21,29 @@ out vec2 v_drill_and_type;
 out vec4 v_color;
 out float v_screen_x_ratio;
 out float v_diff_flags;
+out float v_is_hovered;
 
 void main() {
   uint layer_mask = uint(a_params.z + 0.5);
   uint active_mask = uint(u_center_and_scale.w + 0.5);
 
+  // Bitmask hardware layer filter
   if ((layer_mask & active_mask & 511u) == 0u) {
+    gl_Position = vec4(-2.0, -2.0, 0.0, 1.0);
+    return;
+  }
+
+  vec2 p1 = a_p1_p2.xy;
+  vec2 p2 = a_p1_p2.zw;
+  float w = max(a_params.x, 0.08);
+  float h = max(a_params.y, 0.08);
+  float prim_type = a_params.w;
+  float scale = u_center_and_scale.z;
+
+  // OPTIMIZATION 1: Hardware Sub-Pixel LOD Culling in Vertex Stage
+  // Culls ultra-small microvias/pads when zoomed far out before any fragment shader executes
+  float max_dim_px = max(w, h) * scale;
+  if (prim_type < 2.2 && max_dim_px < 0.38 && length(p2 - p1) * scale < 0.55) {
     gl_Position = vec4(-2.0, -2.0, 0.0, 1.0);
     return;
   }
@@ -40,24 +58,19 @@ void main() {
   );
   vec2 uv = quad[gl_VertexID];
 
-  vec2 p1 = a_p1_p2.xy;
-  vec2 p2 = a_p1_p2.zw;
-  float w = max(a_params.x, 0.08);
-  float h = max(a_params.y, 0.08);
-  float prim_type = a_params.w;
-
   vec2 world_mm;
+  float seg_len = 0.0;
   if (prim_type < 0.5) {
     vec2 delta = p2 - p1;
-    float len = length(delta);
-    vec2 dir = len > 0.0001 ? (delta / len) : vec2(1.0, 0.0);
+    seg_len = length(delta);
+    vec2 dir = seg_len > 0.0001 ? (delta / seg_len) : vec2(1.0, 0.0);
     vec2 norm = vec2(-dir.y, dir.x);
     float r = w * 0.5;
-    float along = uv.x > 0.0 ? (len + r) : -r;
+    float along = uv.x > 0.0 ? (seg_len + r) : -r;
     float perp = uv.y * r;
     world_mm = p1 + dir * along + norm * perp;
     v_local_pos = vec2(along, perp);
-    v_seg_len_and_r = vec2(len, r);
+    v_seg_len_and_r = vec2(seg_len, r);
   } else {
     float rx = w * 0.5;
     float ry = prim_type > 1.5 ? (h * 0.5) : (w * 0.5);
@@ -67,6 +80,7 @@ void main() {
   }
 
   v_drill_and_type = vec2(a_params.y * 0.5, prim_type);
+  v_is_hovered = (int(u_3d_and_hover.w) == gl_InstanceID) ? 1.0 : 0.0;
 
   // Check diff flags: bit 9 (512)=unchanged, bit 10 (1024)=removed (only in A), bit 11 (2048)=added (only in B)
   if (u_diff_params.x > 0.5) {
@@ -83,10 +97,8 @@ void main() {
   } else {
     v_diff_flags = 0.0;
     if ((layer_mask & 256u) != 0u) {
-      // Review Pin Marker
       v_color = prim_type > 2.5 ? vec4(0.06, 0.73, 0.51, 1.0) : vec4(0.88, 0.11, 0.28, 1.0);
     } else if ((layer_mask & 128u) != 0u) {
-      // DRC Violation Marker
       v_color = vec4(0.96, 0.62, 0.04, 0.95);
     } else if ((layer_mask & 4u) != 0u) {
       v_color = vec4(0.97, 0.98, 0.99, 0.95); // Edge.Cuts
@@ -103,11 +115,54 @@ void main() {
     }
   }
 
-  vec2 screen_px = (world_mm - u_center_and_scale.xy) * u_center_and_scale.z;
+  vec2 rel = world_mm - u_center_and_scale.xy;
+
+  // OPTIMIZATION 2: Hardware 3D Multi-Layer Stackup Isometric/Orbit Projection
+  if (u_3d_and_hover.x > 0.05) {
+    float z_layer = 0.0;
+    if ((layer_mask & 256u) != 0u || (layer_mask & 128u) != 0u) {
+      z_layer = 7.5;
+    } else if ((layer_mask & 8u) != 0u) {
+      z_layer = 5.5;  // F.SilkS
+    } else if ((layer_mask & 32u) != 0u) {
+      z_layer = 3.8;  // F.Mask
+    } else if ((layer_mask & 1u) != 0u) {
+      z_layer = 2.2;  // F.Cu
+    } else if ((layer_mask & 4u) != 0u) {
+      z_layer = 0.0;  // FR4 Core / Edge.Cuts
+    } else if ((layer_mask & 2u) != 0u) {
+      z_layer = -2.2; // B.Cu
+    } else if ((layer_mask & 64u) != 0u) {
+      z_layer = -3.8; // B.Mask
+    } else if ((layer_mask & 16u) != 0u) {
+      z_layer = -5.5; // B.SilkS
+    }
+    z_layer *= u_3d_and_hover.x;
+
+    float cy = cos(u_3d_and_hover.y);
+    float sy = sin(u_3d_and_hover.y);
+    float cp = cos(u_3d_and_hover.z);
+    float sp = sin(u_3d_and_hover.z);
+
+    // Rotate around Z (yaw) then tilt around X (pitch)
+    float rx = rel.x * cy - rel.y * sy;
+    float ry = rel.x * sy + rel.y * cy;
+    float proj_y = ry * cp - z_layer * sp;
+    rel = vec2(rx, proj_y);
+  }
+
+  vec2 screen_px = rel * scale;
   vec2 ndc = vec2(
     screen_px.x / (u_viewport_and_opacities.x * 0.5),
     -screen_px.y / (u_viewport_and_opacities.y * 0.5)
   );
+
+  // OPTIMIZATION 3: Vertex-Stage Frustum Culling for compact off-screen instances
+  if (seg_len < 15.0 && (abs(ndc.x) > 1.35 || abs(ndc.y) > 1.35)) {
+    gl_Position = vec4(-2.0, -2.0, 0.0, 1.0);
+    return;
+  }
+
   v_screen_x_ratio = ndc.x * 0.5 + 0.5;
   gl_Position = vec4(ndc, 0.0, 1.0);
 }
@@ -124,6 +179,7 @@ in vec2 v_drill_and_type;
 in vec4 v_color;
 in float v_screen_x_ratio;
 in float v_diff_flags;
+in float v_is_hovered;
 
 out vec4 outColor;
 
@@ -163,6 +219,11 @@ void main() {
       outColor = vec4(1.0, 1.0, 1.0, 1.0);
     }
   }
+
+  // Real-time GPU hover highlight without VBO re-upload
+  if (v_is_hovered > 0.5) {
+    outColor = vec4(mix(outColor.rgb, vec3(0.15, 0.96, 1.0), 0.78), 1.0);
+  }
 }
 "#;
 
@@ -180,6 +241,10 @@ pub struct RustGpuRenderer {
     pub opacities: [f32; 4], // [F.Cu, B.Cu, SilkS, Mask]
     pub diff_mode: f32,      // 0.0 = normal PCB, 1.0 = boolean diff, 2.0 = split wipe
     pub wipe_ratio: f32,     // 0.0 .. 1.0
+    pub mode_3d_explode: f32, // 0.0 = 2D Ortho, >0.0 = 3D Stackup Explosion factor
+    pub yaw_rad: f32,
+    pub pitch_rad: f32,
+    pub hovered_instance_id: i32,
 }
 
 impl RustGpuRenderer {
@@ -227,6 +292,10 @@ impl RustGpuRenderer {
             opacities: [0.92, 0.75, 0.85, 0.45],
             diff_mode: 0.0,
             wipe_ratio: 0.5,
+            mode_3d_explode: 0.0,
+            yaw_rad: -0.45,
+            pitch_rad: 0.62,
+            hovered_instance_id: -1,
         })
     }
 
@@ -295,6 +364,11 @@ impl RustGpuRenderer {
         self.center_mm.1 -= (dy as f32 * dpr) / self.scale_px_per_mm;
     }
 
+    pub fn orbit_by_css_px(&mut self, dx: f64, dy: f64) {
+        self.yaw_rad += (dx as f32) * 0.008;
+        self.pitch_rad = (self.pitch_rad + (dy as f32) * 0.008).clamp(0.1, 1.35);
+    }
+
     pub fn draw(&mut self) {
         self.resize_to_parent();
         let w = self.canvas.width() as i32;
@@ -341,6 +415,17 @@ impl RustGpuRenderer {
             self.wipe_ratio,
             self.opacities[2],
             self.opacities[3],
+        );
+
+        let u4 = self
+            .gl
+            .get_uniform_location(&self.program, "u_3d_and_hover");
+        self.gl.uniform4f(
+            u4.as_ref(),
+            self.mode_3d_explode,
+            self.yaw_rad,
+            self.pitch_rad,
+            self.hovered_instance_id as f32,
         );
 
         self.gl.bind_vertex_array(Some(&self.vao));

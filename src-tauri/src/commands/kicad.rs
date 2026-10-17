@@ -222,3 +222,93 @@ pub async fn execute_drc(project_path: String, pcb_filename: String) -> Result<D
         violations,
     })
 }
+
+#[command]
+pub async fn render_schematic_sheets(
+    project_path: String,
+    sch_filename: String,
+) -> Result<Vec<String>, String> {
+    let base_path = PathBuf::from(&project_path);
+    let sch_path = if PathBuf::from(&sch_filename).is_absolute() {
+        PathBuf::from(&sch_filename)
+    } else {
+        base_path.join(&sch_filename)
+    };
+
+    let out_dir = base_path.join(".cadenceflow").join("sheets");
+    tokio::fs::create_dir_all(&out_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let _output = Command::new("kicad-cli")
+        .env("XDG_CONFIG_HOME", "/tmp/kicad_cfg")
+        .env("XDG_DATA_HOME", "/tmp/kicad_data")
+        .args([
+            "sch",
+            "export",
+            "svg",
+            "--exclude-drawing-sheet",
+            "-o",
+            out_dir.to_str().unwrap(),
+            sch_path.to_str().unwrap(),
+        ])
+        .output()
+        .map_err(|e| format!("Failed to export schematic SVGs: {}", e))?;
+
+    let mut sheets = Vec::new();
+    if let Ok(mut entries) = tokio::fs::read_dir(&out_dir).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("svg") {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    sheets.push(name.to_string());
+                }
+            }
+        }
+    }
+    sheets.sort();
+    Ok(sheets)
+}
+
+#[command]
+pub async fn export_pcb_vrml_3d(
+    project_path: String,
+    pcb_filename: String,
+) -> Result<String, String> {
+    let base_path = PathBuf::from(&project_path);
+    let pcb_path = if PathBuf::from(&pcb_filename).is_absolute() {
+        PathBuf::from(&pcb_filename)
+    } else {
+        base_path.join(&pcb_filename)
+    };
+
+    let out_path = base_path.join(".cadenceflow").join("board.wrl");
+    if let Some(parent) = out_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    let output = Command::new("kicad-cli")
+        .env("XDG_CONFIG_HOME", "/tmp/kicad_cfg")
+        .env("XDG_DATA_HOME", "/tmp/kicad_data")
+        .args([
+            "pcb",
+            "export",
+            "vrml",
+            "--units",
+            "mm",
+            "-o",
+            out_path.to_str().unwrap(),
+            pcb_path.to_str().unwrap(),
+        ])
+        .output()
+        .map_err(|e| format!("Failed to export 3D VRML: {}", e))?;
+
+    if output.status.success() {
+        Ok(out_path.to_string_lossy().to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
