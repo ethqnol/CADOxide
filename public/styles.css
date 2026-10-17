@@ -1,4 +1,4 @@
-/* CADoxide — Desktop EDA PCB CAD Workstation Stylesheet */
+/* CADoxide — KiCad Pcbnew Desktop EDA Workstation Stylesheet */
 *, ::before, ::after {
   box-sizing: border-box;
   border-width: 0;
@@ -12,11 +12,11 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background-color: #0e1013;
+  background-color: #0e1012;
   color: #d4d8e0;
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 11.5px;
+  line-height: 1.3;
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
@@ -32,43 +32,65 @@ html, body {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background-color: #14161a;
+  background-color: #16181c;
 }
 
-/* Tier 1: Top Document & Workspace Tab Bar (32px) */
-.cad-menubar {
-  height: 32px;
-  min-height: 32px;
-  background-color: #14161a;
-  border-bottom: 1px solid #262a33;
+/* Row 1: Native Desktop Menu Bar + Mode Switcher (26px) */
+.cad-topmenu {
+  height: 26px;
+  min-height: 26px;
+  background-color: #181a1f;
+  border-bottom: 1px solid #262932;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
-  gap: 8px;
+  padding: 0 6px;
+  z-index: 45;
+}
+
+.cad-menu-items {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.cad-menu-btn {
+  height: 22px;
+  padding: 0 7px;
+  background: transparent;
+  color: #c9d1d9;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.cad-menu-btn:hover {
+  background-color: #262a34;
+  color: #ffffff;
+}
+
+/* Row 2: Top Action & Auxiliary Parameter Toolbar (30px) */
+.cad-menubar, .cad-param-bar {
+  height: 30px;
+  min-height: 30px;
+  background-color: #1c1f26;
+  border-bottom: 1px solid #282c36;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+  gap: 6px;
   z-index: 40;
-  overflow: hidden;
-}
-
-/* Tier 2: Contextual CAD Routing / 3D / Diff Parameter Bar (28px) */
-.cad-param-bar {
-  height: 28px;
-  min-height: 28px;
-  background-color: #181b20;
-  border-bottom: 1px solid #262a33;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 8px;
-  gap: 8px;
-  z-index: 39;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .cad-menubar-group {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -76,9 +98,9 @@ html, body {
 .cad-param-label {
   font-size: 10px;
   font-weight: 600;
-  color: #828a99;
+  color: #8b93a5;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   margin-left: 2px;
   white-space: nowrap;
 }
@@ -86,11 +108,10 @@ html, body {
 .cad-brand {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   padding: 0 6px 0 2px;
   font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.03em;
+  font-size: 11.5px;
   color: #eceff4;
   white-space: nowrap;
   flex-shrink: 0;
@@ -99,7 +120,7 @@ html, body {
 .cad-divider-v {
   width: 1px;
   height: 16px;
-  background-color: #282d37;
+  background-color: #2c313c;
   margin: 0 2px;
   flex-shrink: 0;
 }
@@ -109,9 +130,9 @@ html, body {
   height: 22px;
   background-color: #111317;
   color: #d8dee9;
-  border: 1px solid #2d323e;
+  border: 1px solid #2e3440;
   border-radius: 2px;
-  padding: 0 6px;
+  padding: 0 5px;
   font-size: 11px;
   font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   outline: none;
@@ -119,23 +140,23 @@ html, body {
   flex-shrink: 0;
 }
 .cad-select:focus {
-  border-color: #d4b047;
+  border-color: #4c9aff;
 }
 
 .cad-input {
-  height: 22px;
+  height: 21px;
   background-color: #101216;
   color: #eceff4;
-  border: 1px solid #2d323e;
+  border: 1px solid #2e3440;
   border-radius: 2px;
-  padding: 0 6px;
+  padding: 0 5px;
   font-size: 11px;
   font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   outline: none;
   width: 100%;
 }
 .cad-input:focus {
-  border-color: #d4b047;
+  border-color: #4c9aff;
 }
 
 .cad-btn {
@@ -144,9 +165,9 @@ html, body {
   align-items: center;
   gap: 4px;
   padding: 0 7px;
-  background-color: #1e2229;
-  color: #c8d0dc;
-  border: 1px solid #2e3440;
+  background-color: #232730;
+  color: #cfd6e2;
+  border: 1px solid #323846;
   border-radius: 2px;
   font-size: 11px;
   font-weight: 500;
@@ -156,17 +177,17 @@ html, body {
   text-decoration: none;
 }
 .cad-btn:hover {
-  background-color: #272c36;
+  background-color: #2c323e;
   color: #ffffff;
-  border-color: #3e4656;
+  border-color: #434c5e;
 }
 .cad-btn-active {
-  background-color: #2b2618 !important;
-  color: #f3d06b !important;
-  border-color: #b59235 !important;
+  background-color: #1f324d !important;
+  color: #79b8ff !important;
+  border-color: #388bfd !important;
 }
 .cad-btn-danger {
-  background-color: #2a1619;
+  background-color: #2c1619;
   color: #f87171;
   border-color: #5c232a;
 }
@@ -175,18 +196,18 @@ html, body {
   color: #fca5a5;
 }
 
-/* Flat Desktop CAD Mode Tabs (KiCad / Altium Style) */
+/* Flat Desktop CAD Mode Tabs */
 .cad-tabs {
   display: flex;
   align-items: stretch;
-  height: 32px;
+  height: 26px;
   gap: 1px;
   flex-shrink: 0;
 }
 
 .cad-tab {
-  height: 32px;
-  padding: 0 11px;
+  height: 26px;
+  padding: 0 10px;
   background: transparent;
   color: #8b92a2;
   border: none;
@@ -202,15 +223,15 @@ html, body {
 }
 .cad-tab:hover {
   color: #e5e9f0;
-  background-color: #1b1e24;
+  background-color: #21252e;
 }
 .cad-tab-active {
-  color: #f3d06b;
-  background-color: #1c2026;
-  border-bottom: 2px solid #d4b047;
+  color: #79b8ff;
+  background-color: #202632;
+  border-bottom: 2px solid #388bfd;
 }
 
-/* Workspace Middle Area (Left Toolstrip + Center Canvas + Right Dock) */
+/* Workspace Middle Area (Left View Options Strip + Center Canvas + Right Drawing Strip + Right Appearance Dock) */
 .cad-workspace {
   display: flex;
   flex: 1;
@@ -218,57 +239,77 @@ html, body {
   overflow: hidden;
 }
 
-/* Left Vertical CAD Tool Strip (38px) */
+/* Left & Right Vertical CAD Tool Strips (34px, KiCad Pcbnew style) */
 .cad-toolstrip {
-  width: 38px;
-  min-width: 38px;
-  background-color: #16181d;
-  border-right: 1px solid #262a33;
+  width: 34px;
+  min-width: 34px;
+  background-color: #191c22;
+  border-right: 1px solid #282c36;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 5px 0;
-  gap: 3px;
+  padding: 3px 0;
+  gap: 2px;
   z-index: 30;
+  overflow-y: auto;
+}
+
+.cad-toolstrip-right {
+  width: 34px;
+  min-width: 34px;
+  background-color: #191c22;
+  border-left: 1px solid #282c36;
+  border-right: 1px solid #282c36;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3px 0;
+  gap: 2px;
+  z-index: 30;
+  overflow-y: auto;
 }
 
 .cad-tool-btn {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
   background-color: transparent;
-  color: #8f97a8;
+  color: #9aa2b2;
   border: 1px solid transparent;
   border-radius: 2px;
   cursor: pointer;
   padding: 0;
-  position: relative;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: "JetBrains Mono", monospace;
 }
 .cad-tool-btn:hover {
-  background-color: #22262e;
-  color: #eceff4;
-  border-color: #323846;
+  background-color: #262b36;
+  color: #ffffff;
+  border-color: #384050;
 }
 .cad-tool-btn-active {
-  background-color: #2b2618 !important;
-  color: #f3d06b !important;
-  border-color: #b59235 !important;
+  background-color: #1f324d !important;
+  color: #79b8ff !important;
+  border-color: #388bfd !important;
 }
 
 .cad-tool-sep {
   width: 22px;
   height: 1px;
-  background-color: #262a33;
-  margin: 3px 0;
+  min-height: 1px;
+  background-color: #292e38;
+  margin: 2px 0;
 }
 
 /* Center Viewport */
 .cad-viewport {
   flex: 1;
   position: relative;
-  background-color: #0e1013;
+  background-color: #0e1012;
   overflow: hidden;
 }
 
@@ -279,12 +320,20 @@ html, body {
   cursor: crosshair;
 }
 
-/* Right Docked CAD Sidebar (280px) */
+.cad-overlay-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Right Docked KiCad Appearance + Selection Filter Sidebar (288px) */
 .cad-sidebar {
-  width: 280px;
-  min-width: 280px;
-  background-color: #16181d;
-  border-left: 1px solid #262a33;
+  width: 288px;
+  min-width: 288px;
+  background-color: #191c22;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -292,99 +341,193 @@ html, body {
 }
 
 .cad-panel-header {
-  height: 24px;
-  min-height: 24px;
-  background-color: #1c1f26;
-  border-top: 1px solid #262a33;
-  border-bottom: 1px solid #262a33;
-  padding: 0 9px;
+  height: 22px;
+  min-height: 22px;
+  background-color: #21252e;
+  border-top: 1px solid #2b303c;
+  border-bottom: 1px solid #2b303c;
+  padding: 0 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: #8e96a8;
+  color: #b8c0d0;
 }
 .cad-panel-header:first-child {
   border-top: none;
 }
 
-/* Layer Manager Rows */
+/* Appearance Sub-Tabs (Layers | Objects | Nets) */
+.cad-appear-tabs {
+  display: flex;
+  height: 24px;
+  min-height: 24px;
+  background-color: #15181d;
+  border-bottom: 1px solid #282c36;
+}
+
+.cad-appear-tab {
+  flex: 1;
+  background: transparent;
+  color: #8c95a6;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cad-appear-tab:hover {
+  color: #e2e8f0;
+  background-color: #1d2129;
+}
+.cad-appear-tab-active {
+  color: #79b8ff;
+  background-color: #1f242d;
+  border-bottom: 2px solid #388bfd;
+}
+
+/* Layer Manager Rows (KiCad 18-Layer Stack) */
 .cad-layer-list {
-  padding: 3px 0;
-  border-bottom: 1px solid #262a33;
+  flex: 1;
+  min-height: 155px;
+  max-height: 295px;
+  overflow-y: auto;
+  padding: 2px 0;
+  border-bottom: 1px solid #282c36;
 }
 
 .cad-layer-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 22px;
-  padding: 0 9px;
+  height: 20px;
+  padding: 0 6px;
   font-size: 11px;
-  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   color: #d0d6e0;
   cursor: pointer;
 }
 .cad-layer-row:hover {
-  background-color: #1f232b;
+  background-color: #232832;
+}
+.cad-layer-row-active {
+  background-color: #1f2d42 !important;
+  color: #ffffff;
 }
 
 .cad-layer-left {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+}
+
+.cad-active-arrow {
+  width: 8px;
+  font-size: 9px;
+  color: #388bfd;
+  display: inline-block;
+  text-align: center;
 }
 
 .cad-swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 1px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
   display: inline-block;
+  flex-shrink: 0;
 }
 
 .cad-layer-type {
-  font-size: 10px;
+  font-size: 9.5px;
   color: #6c7486;
+}
+
+/* Layer Display Options Box */
+.cad-display-opts {
+  padding: 6px 8px;
+  border-bottom: 1px solid #282c36;
+  background-color: #171a20;
+  font-size: 11px;
+  color: #c2c9d6;
+}
+
+/* Selection Filter Grid (KiCad Bottom-Right Dock) */
+.cad-filter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 3px 6px;
+  padding: 5px 8px;
+  background-color: #15181d;
+  border-bottom: 1px solid #282c36;
+  font-size: 10.5px;
+  color: #c2c9d6;
+}
+
+.cad-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 /* Property Inspector Grid */
 .cad-prop-grid {
   display: grid;
-  grid-template-columns: 76px 1fr;
-  gap: 5px 8px;
+  grid-template-columns: 74px 1fr;
+  gap: 4px 6px;
   align-items: center;
-  padding: 8px 10px;
+  padding: 6px 8px;
 }
 
 .cad-prop-label {
-  font-size: 11px;
+  font-size: 10.5px;
   color: #8e96a8;
   white-space: nowrap;
 }
 
-/* Bottom Docked CAD Status Bar (24px) */
-.cad-statusbar {
-  height: 24px;
-  min-height: 24px;
-  background-color: #121418;
-  border-top: 1px solid #262a33;
+/* Bottom 2-Row KiCad Status Bar */
+.cad-statusbar-wrap {
+  display: flex;
+  flex-direction: column;
+  background-color: #131519;
+  border-top: 1px solid #282c36;
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  font-size: 10.5px;
+  color: #b8c0d0;
+  z-index: 40;
+}
+
+.cad-statusbar-summary {
+  height: 19px;
+  min-height: 19px;
+  background-color: #171a20;
+  border-bottom: 1px solid #22262e;
   display: flex;
   align-items: center;
-  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  color: #b0b8c8;
-  z-index: 40;
+  padding: 0 8px;
+  gap: 14px;
+  color: #9aa2b2;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.cad-statusbar {
+  height: 22px;
+  min-height: 22px;
+  background-color: #121418;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
 }
 
 .cad-status-cell {
   height: 100%;
   display: flex;
   align-items: center;
-  padding: 0 10px;
+  padding: 0 8px;
   border-right: 1px solid #22262f;
   white-space: nowrap;
   flex-shrink: 0;
@@ -401,7 +544,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px;
+  padding: 7px 12px;
   border-bottom: 1px solid #20242d;
   background-color: #121418;
 }
@@ -409,10 +552,10 @@ html, body {
   background-color: #191d24;
 }
 
-input[type="checkbox"] {
+input[type="checkbox"], input[type="radio"] {
   width: 12px;
   height: 12px;
   margin: 0;
-  accent-color: #d4b047;
+  accent-color: #388bfd;
   cursor: pointer;
 }

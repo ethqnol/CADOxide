@@ -18,6 +18,8 @@ features = [
   "console",
   "Window",
   "Document",
+  "Node",
+  "NodeList",
   "Element",
   "HtmlElement",
   "HtmlCanvasElement",

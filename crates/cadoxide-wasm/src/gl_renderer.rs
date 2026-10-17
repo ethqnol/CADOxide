@@ -26,8 +26,8 @@ void main() {
 const BG_FS_SRC: &str = r#"#version 300 es
 precision highp float;
 
-uniform vec4 u_center_and_scale;        // x: centerX_mm, y: centerY_mm, z: scale_px_per_mm
-uniform vec4 u_viewport_and_opacities;  // x: width_px, y: height_px
+uniform vec4 u_center_and_scale;        // x: centerX_mm, y: centerY_mm, z: scale_px_per_mm, w: grid_step_mm
+uniform vec4 u_viewport_and_opacities;  // x: width_px, y: height_px, z: show_grid (1/0), w: flip_board_x (1/0)
 uniform vec4 u_board_bounds;            // x: min_x, y: min_y, z: max_x, w: max_y
 uniform vec4 u_3d_and_hover;            // x: mode_3d, y: yaw_rad, z: pitch_rad
 
@@ -35,11 +35,12 @@ in vec2 v_ndc;
 out vec4 outColor;
 
 void main() {
-  vec3 bg = vec3(0.055, 0.062, 0.075); // Neutral EDA dark charcoal (#0e1013)
+  vec3 bg = vec3(0.055, 0.062, 0.072); // Authentic KiCad Pcbnew dark canvas (#0e1012)
 
   float scale = u_center_and_scale.z;
+  float flip_sign = u_viewport_and_opacities.w > 0.5 ? -1.0 : 1.0;
   vec2 screen_px = vec2(
-    v_ndc.x * (u_viewport_and_opacities.x * 0.5),
+    v_ndc.x * (u_viewport_and_opacities.x * 0.5) * flip_sign,
     -v_ndc.y * (u_viewport_and_opacities.y * 0.5)
   );
 
@@ -60,40 +61,42 @@ void main() {
   vec2 bmax = u_board_bounds.zw - vec2(2.0);
   if (world_mm.x >= bmin.x && world_mm.x <= bmax.x &&
       world_mm.y >= bmin.y && world_mm.y <= bmax.y) {
-    bg = vec3(0.065, 0.092, 0.078); // Authentic dark FR4 substrate core
+    bg = vec3(0.062, 0.084, 0.072); // Dark FR4 substrate interior
   }
 
-  // Major 10.0 mm (1 cm) engineering grid lines
-  vec2 d10 = abs(fract(world_mm / 10.0 + 0.5) - 0.5) * 10.0 * scale;
-  float line10 = min(d10.x, d10.y);
-  if (line10 < 0.85) {
-    bg = mix(bg, vec3(0.16, 0.19, 0.23), 0.52);
-  }
-
-  // 1.0 mm minor grid dots (visible when zoomed past 4 px/mm)
-  if (scale > 4.0) {
-    vec2 d1 = abs(fract(world_mm + 0.5) - 0.5) * scale;
-    float dot1 = length(d1);
-    if (dot1 < 1.15) {
-      float fade = clamp((scale - 4.0) / 6.0, 0.0, 1.0);
-      bg = mix(bg, vec3(0.26, 0.30, 0.36), 0.65 * fade);
+  if (u_viewport_and_opacities.z > 0.5) {
+    // Major 10.0 mm (1 cm) engineering grid lines
+    vec2 d10 = abs(fract(world_mm / 10.0 + 0.5) - 0.5) * 10.0 * scale;
+    float line10 = min(d10.x, d10.y);
+    if (line10 < 0.85) {
+      bg = mix(bg, vec3(0.17, 0.20, 0.24), 0.55);
     }
-  }
 
-  // 0.25 mm fine pitch grid dots (visible when zoomed past 24 px/mm)
-  if (scale > 24.0) {
-    vec2 d025 = abs(fract(world_mm * 4.0 + 0.5) - 0.5) * (scale * 0.25);
-    float dot025 = length(d025);
-    if (dot025 < 0.95) {
-      float fade = clamp((scale - 24.0) / 16.0, 0.0, 1.0);
-      bg = mix(bg, vec3(0.22, 0.25, 0.30), 0.45 * fade);
+    // 1.0 mm minor grid dots (visible when zoomed past 4 px/mm)
+    if (scale > 4.0) {
+      vec2 d1 = abs(fract(world_mm + 0.5) - 0.5) * scale;
+      float dot1 = length(d1);
+      if (dot1 < 1.15) {
+        float fade = clamp((scale - 4.0) / 6.0, 0.0, 1.0);
+        bg = mix(bg, vec3(0.28, 0.32, 0.38), 0.68 * fade);
+      }
+    }
+
+    // Active user grid step dots when zoomed in
+    float gstep = max(u_center_and_scale.w, 0.05);
+    if (gstep < 0.99 && scale * gstep > 6.0) {
+      vec2 dg = abs(fract(world_mm / gstep + 0.5) - 0.5) * (scale * gstep);
+      float dotg = length(dg);
+      if (dotg < 0.95) {
+        bg = mix(bg, vec3(0.24, 0.28, 0.34), 0.45);
+      }
     }
   }
 
   // Auxiliary board origin crosshair at bottom-left of board bounds
   vec2 orig_px = abs(world_mm - vec2(bmin.x, bmax.y)) * scale;
-  if ((orig_px.x < 0.8 && orig_px.y < 14.0) || (orig_px.y < 0.8 && orig_px.x < 14.0)) {
-    bg = vec3(0.55, 0.25, 0.25);
+  if ((orig_px.x < 0.85 && orig_px.y < 14.0) || (orig_px.y < 0.85 && orig_px.x < 14.0)) {
+    bg = vec3(0.62, 0.26, 0.26);
   }
 
   outColor = vec4(bg, 1.0);
@@ -110,6 +113,7 @@ uniform vec4 u_center_and_scale;        // x: centerX_mm, y: centerY_mm, z: scal
 uniform vec4 u_viewport_and_opacities;  // x: width_px, y: height_px, z: f_cu_alpha, w: b_cu_alpha
 uniform vec4 u_diff_params;             // x: is_diff_view (0=normal, 1=blend, 2=wipe), y: wipe_ratio (0..1), z: silk_alpha, w: mask_alpha
 uniform vec4 u_3d_and_hover;            // x: mode_3d (0=2D, >0=3D Z-explosion), y: yaw_rad, z: pitch_rad, w: hovered_instance_id (-1 = none)
+uniform vec4 u_display_opts;            // x: high_contrast (0=normal,1=dim,2=hide), y: flip_board_x (0/1), z: sketch_mode (0/1), w: active_draw_layer_bit
 uniform int u_selected_net_id;          // 0 = no net selected, >0 = highlight this electrical net across all layers
 uniform int u_selected_inst_id;         // -1 = no primitive selected, >=0 = highlight selected primitive
 
@@ -124,9 +128,16 @@ out float v_is_hovered;
 void main() {
   uint layer_mask = uint(a_params.z + 0.5);
   uint active_mask = uint(u_center_and_scale.w + 0.5);
+  uint active_draw_bit = uint(u_display_opts.w + 0.5);
 
-  // Bitmask hardware layer filter (bits 0..8 + bit 12 for In1.Cu..In4.Cu)
-  if ((layer_mask & active_mask & 4607u) == 0u) {
+  // Bitmask hardware layer filter across all 18 KiCad layers + overlays (bits 0..22)
+  if ((layer_mask & active_mask & 0x7FFFFFu) == 0u) {
+    gl_Position = vec4(-2.0, -2.0, 0.0, 1.0);
+    return;
+  }
+
+  // High-Contrast Mode (H): 2 = Hide Inactive Layers
+  if (u_display_opts.x > 1.5 && (layer_mask & active_draw_bit) == 0u && (layer_mask & 388u) == 0u) {
     gl_Position = vec4(-2.0, -2.0, 0.0, 1.0);
     return;
   }
@@ -149,7 +160,7 @@ void main() {
     return;
   }
 
-  // OPTIMIZATION 2: Instance-Level Frustum Culling (100% uniform across all 6 vertices of an instance!)
+  // OPTIMIZATION 2: Instance-Level Frustum Culling
   if (u_3d_and_hover.x < 0.05) {
     vec2 inst_mid_mm = 0.5 * (p1 + p2);
     float inst_rad_mm = 0.5 * seg_span_mm + max(w, h);
@@ -176,7 +187,7 @@ void main() {
   vec2 world_mm;
   float seg_len = 0.0;
   if (prim_type < 0.5) {
-    // Capsule Track / Silkscreen Line / Edge.Cuts Line
+    // Capsule Track / Silkscreen Line / Courtyard / Edge.Cuts Line
     vec2 delta = p2 - p1;
     seg_len = length(delta);
     vec2 dir = seg_len > 0.0001 ? (delta / seg_len) : vec2(1.0, 0.0);
@@ -195,8 +206,7 @@ void main() {
     v_local_pos = vec2(uv.x * rx, uv.y * ry);
     v_seg_len_and_r = vec2(rx, ry);
   } else {
-    // Vias (1.0), Rect PTH Pads (4.0), Markers (5.0..7.0), Circles (8.0):
-    // w = outer diameter/size, h = inner drill/ring diameter
+    // Vias (1.0), Rect PTH Pads (4.0), Markers (5.0..7.0), Circles (8.0)
     float rx = w * 0.5;
     float ry = w * 0.5;
     world_mm = p1 + vec2(uv.x * rx, uv.y * ry);
@@ -217,13 +227,13 @@ void main() {
   if (u_diff_params.x > 0.5) {
     if ((layer_mask & 2048u) != 0u) {
       v_diff_flags = 2.0; // Added in Rev B
-      v_color = vec4(0.18, 0.80, 0.44, 0.94); // Added Green
+      v_color = vec4(0.18, 0.80, 0.44, 0.94);
     } else if ((layer_mask & 1024u) != 0u) {
       v_diff_flags = 1.0; // Removed from Rev A
-      v_color = vec4(0.91, 0.25, 0.25, 0.94); // Removed Red
+      v_color = vec4(0.91, 0.25, 0.25, 0.94);
     } else {
       v_diff_flags = 0.0; // Unchanged
-      v_color = vec4(0.28, 0.32, 0.38, 0.52); // Muted Reference Slate
+      v_color = vec4(0.28, 0.32, 0.38, 0.52);
     }
   } else {
     v_diff_flags = 0.0;
@@ -234,36 +244,77 @@ void main() {
       // DRC Violation Ring
       v_color = vec4(0.96, 0.62, 0.08, 0.96);
     } else if ((layer_mask & 4u) != 0u) {
-      // KiCad Edge.Cuts Yellow-Gold
-      v_color = vec4(0.88, 0.76, 0.22, 0.98);
+      // Edge.Cuts (#D8C238)
+      v_color = vec4(0.85, 0.76, 0.22, 0.98);
+    } else if ((layer_mask & 4194304u) != 0u) {
+      // Margin (#D838B8)
+      v_color = vec4(0.85, 0.22, 0.72, 0.92);
+    } else if ((layer_mask & 65536u) != 0u && (active_mask & 65536u) != 0u) {
+      // F.Courtyard (#E038D8 KiCad Magenta)
+      v_color = vec4(0.88, 0.22, 0.85, 0.90);
+    } else if ((layer_mask & 131072u) != 0u && (active_mask & 131072u) != 0u) {
+      // B.Courtyard (#28C8E0 KiCad Cyan)
+      v_color = vec4(0.16, 0.78, 0.88, 0.90);
+    } else if ((layer_mask & 262144u) != 0u && (active_mask & 262144u) != 0u) {
+      // F.Fab (#888E96)
+      v_color = vec4(0.54, 0.56, 0.59, 0.84);
+    } else if ((layer_mask & 524288u) != 0u && (active_mask & 524288u) != 0u) {
+      // B.Fab (#586278)
+      v_color = vec4(0.35, 0.39, 0.47, 0.84);
+    } else if ((layer_mask & 1048576u) != 0u && (active_mask & 1048576u) != 0u) {
+      // User.Drawings (#94A2B0)
+      v_color = vec4(0.58, 0.64, 0.69, 0.88);
+    } else if ((layer_mask & 2097152u) != 0u && (active_mask & 2097152u) != 0u) {
+      // User.Comments (#5C94D8)
+      v_color = vec4(0.36, 0.58, 0.85, 0.88);
     } else if ((prim_type > 0.5 && prim_type < 1.5) || (prim_type > 3.5 && prim_type < 4.5)) {
-      // Plated Through-Hole Via / PTH Pad (ENIG Gold/Brass Annular Ring)
-      v_color = vec4(0.82, 0.68, 0.30, 0.96);
-    } else if ((layer_mask & 8u) != 0u && (active_mask & 8u) != 0u && prim_type < 1.5) {
-      // Top Silkscreen (F.SilkS)
-      v_color = vec4(0.84, 0.89, 0.91, u_diff_params.z);
-    } else if ((layer_mask & 8u) != 0u && prim_type > 7.5) {
-      // Silkscreen Circle
-      v_color = vec4(0.84, 0.89, 0.91, u_diff_params.z);
+      // Plated Through-Hole Via / PTH Pad (#C8B43C KiCad Gold/Tan)
+      v_color = vec4(0.80, 0.70, 0.32, 0.96);
+    } else if ((layer_mask & 8u) != 0u && (active_mask & 8u) != 0u && (prim_type < 1.5 || prim_type > 7.5)) {
+      // F.Silkscreen (#F2EDA1 KiCad Warm Cream)
+      v_color = vec4(0.95, 0.93, 0.63, u_diff_params.z);
+    } else if ((layer_mask & 16u) != 0u && (active_mask & 16u) != 0u && (prim_type < 1.5 || prim_type > 7.5)) {
+      // B.Silkscreen (#E8B2A6 KiCad Rose)
+      v_color = vec4(0.91, 0.70, 0.65, u_diff_params.z);
     } else if ((layer_mask & 1u) != 0u && (active_mask & 1u) != 0u) {
-      // KiCad F.Cu (Front Copper Red)
+      // KiCad F.Cu (#C83434 Front Copper Red)
       v_color = vec4(0.78, 0.20, 0.20, u_viewport_and_opacities.z);
     } else if ((layer_mask & 4096u) != 0u && (active_mask & 4096u) != 0u) {
-      // KiCad In1..In4.Cu (Inner Copper Ochre-Green)
-      v_color = vec4(0.75, 0.56, 0.16, 0.86);
+      // KiCad In1.Cu (#C2B238 Inner 1 Gold-Olive)
+      v_color = vec4(0.76, 0.70, 0.22, 0.88);
+    } else if ((layer_mask & 8192u) != 0u && (active_mask & 8192u) != 0u) {
+      // KiCad In2.Cu (#D47B28 Inner 2 Orange-Bronze)
+      v_color = vec4(0.83, 0.48, 0.16, 0.88);
     } else if ((layer_mask & 2u) != 0u && (active_mask & 2u) != 0u) {
-      // KiCad B.Cu (Bottom Copper Blue)
-      v_color = vec4(0.20, 0.44, 0.76, u_viewport_and_opacities.w);
-    } else if ((layer_mask & 8u) != 0u || (layer_mask & 16u) != 0u) {
-      v_color = vec4(0.84, 0.89, 0.91, u_diff_params.z);
+      // KiCad B.Cu (#2878C8 Back Copper Blue)
+      v_color = vec4(0.16, 0.47, 0.78, u_viewport_and_opacities.w);
+    } else if ((layer_mask & 16384u) != 0u && (active_mask & 16384u) != 0u) {
+      // F.Paste (#9E8282)
+      v_color = vec4(0.62, 0.51, 0.51, 0.72);
+    } else if ((layer_mask & 32768u) != 0u && (active_mask & 32768u) != 0u) {
+      // B.Paste (#6E9E9E)
+      v_color = vec4(0.43, 0.62, 0.62, 0.72);
+    } else if ((layer_mask & 32u) != 0u && (active_mask & 32u) != 0u) {
+      // F.Mask (#6B285C KiCad Purple-Magenta Solder Mask)
+      v_color = vec4(0.42, 0.16, 0.36, u_diff_params.w);
+    } else if ((layer_mask & 64u) != 0u && (active_mask & 64u) != 0u) {
+      // B.Mask (#1E6E64 KiCad Teal Solder Mask)
+      v_color = vec4(0.12, 0.43, 0.39, u_diff_params.w);
     } else {
-      v_color = vec4(0.11, 0.54, 0.38, u_diff_params.w);
+      v_color = vec4(0.75, 0.78, 0.82, 0.80);
+    }
+
+    // High-Contrast Mode (H): 1 = Dim Inactive Layers
+    if (u_display_opts.x > 0.5 && u_display_opts.x < 1.5) {
+      if ((layer_mask & active_draw_bit) == 0u && (layer_mask & 388u) == 0u) {
+        v_color = vec4(v_color.rgb * 0.35, v_color.a * 0.22);
+      }
     }
 
     // GPU Netlist Highlighting
     if (u_selected_net_id > 0) {
       if (net_id == u_selected_net_id) {
-        if (v_is_hovered < 2.5) v_is_hovered = 2.0; // Highlight entire connected net
+        if (v_is_hovered < 2.5) v_is_hovered = 2.0;
       } else if ((layer_mask & 388u) == 0u && v_is_hovered < 2.5) {
         v_color = vec4(v_color.rgb * 0.30, v_color.a * 0.15);
       }
@@ -277,22 +328,28 @@ void main() {
     float z_layer = 0.0;
     if ((layer_mask & 256u) != 0u || (layer_mask & 128u) != 0u) {
       z_layer = 7.5;
+    } else if ((layer_mask & 65536u) != 0u || (layer_mask & 262144u) != 0u) {
+      z_layer = 6.2;  // F.CrtYd / F.Fab
     } else if ((layer_mask & 8u) != 0u) {
       z_layer = 5.5;  // F.SilkS
-    } else if ((layer_mask & 32u) != 0u) {
-      z_layer = 3.8;  // F.Mask
+    } else if ((layer_mask & 32u) != 0u || (layer_mask & 16384u) != 0u) {
+      z_layer = 3.8;  // F.Mask / F.Paste
     } else if ((layer_mask & 1u) != 0u) {
       z_layer = 2.2;  // F.Cu
     } else if ((layer_mask & 4096u) != 0u) {
-      z_layer = 0.8;  // In1.Cu..In4.Cu
+      z_layer = 0.8;  // In1.Cu
+    } else if ((layer_mask & 8192u) != 0u) {
+      z_layer = -0.8; // In2.Cu
     } else if ((layer_mask & 4u) != 0u) {
       z_layer = 0.0;  // FR4 Core / Edge.Cuts
     } else if ((layer_mask & 2u) != 0u) {
       z_layer = -2.2; // B.Cu
-    } else if ((layer_mask & 64u) != 0u) {
-      z_layer = -3.8; // B.Mask
+    } else if ((layer_mask & 64u) != 0u || (layer_mask & 32768u) != 0u) {
+      z_layer = -3.8; // B.Mask / B.Paste
     } else if ((layer_mask & 16u) != 0u) {
       z_layer = -5.5; // B.SilkS
+    } else if ((layer_mask & 131072u) != 0u || (layer_mask & 524288u) != 0u) {
+      z_layer = -6.2; // B.CrtYd / B.Fab
     }
     z_layer *= u_3d_and_hover.x;
 
@@ -307,7 +364,8 @@ void main() {
     rel = vec2(rx, proj_y);
   }
 
-  vec2 screen_px = rel * scale;
+  float flip_sign = u_display_opts.y > 0.5 ? -1.0 : 1.0;
+  vec2 screen_px = vec2(rel.x * scale * flip_sign, rel.y * scale);
   vec2 ndc = vec2(
     screen_px.x / (u_viewport_and_opacities.x * 0.5),
     -screen_px.y / (u_viewport_and_opacities.y * 0.5)
@@ -322,6 +380,7 @@ const FS_SRC: &str = r#"#version 300 es
 precision highp float;
 
 uniform vec4 u_diff_params;
+uniform vec4 u_display_opts; // z: sketch_mode (0/1)
 
 in vec2 v_local_pos;
 in vec2 v_seg_len_and_r;
@@ -358,22 +417,27 @@ void main() {
 
   float prim_type = v_drill_and_type.y;
   float drill_r = v_drill_and_type.x;
+  bool sketch = u_display_opts.z > 0.5;
 
   if (prim_type < 0.5) {
     // 0.0: Capsule Track / Silkscreen Line
     float clamped_x = clamp(v_local_pos.x, 0.0, v_seg_len_and_r.x);
     float dist = length(vec2(v_local_pos.x - clamped_x, v_local_pos.y));
-    if (dist > v_seg_len_and_r.y) discard;
+    float r = v_seg_len_and_r.y;
+    if (dist > r) discard;
+    if (sketch && r > 0.09 && dist < r * 0.72) discard;
   } else if (prim_type < 1.5) {
     // 1.0: Plated Via or Circular/Oval PTH Pad with Dark Plated Drill Hole
     float dist = length(v_local_pos);
     float outer_r = v_seg_len_and_r.x;
     if (dist > outer_r) discard;
     if (dist < drill_r * 0.86) {
-      outColor = vec4(0.038, 0.045, 0.062, 1.0); // Plated drill hole center
+      outColor = vec4(0.038, 0.045, 0.062, 1.0);
       return;
     } else if (dist < drill_r * 1.06) {
-      outColor = vec4(0.55, 0.44, 0.18, 1.0); // Inner hole barrel rim
+      outColor = vec4(0.55, 0.44, 0.18, 1.0);
+    } else if (sketch && dist < outer_r * 0.82) {
+      outColor.a *= 0.22;
     }
   } else if (prim_type < 2.5) {
     // 2.0: Rounded-Rectangle SMD Pad
@@ -381,10 +445,17 @@ void main() {
     float corner_r = min(half_ext.x, half_ext.y) * 0.22;
     float d = sdRoundedBox(v_local_pos, half_ext, corner_r);
     if (d > 0.0) discard;
+    if (sketch && d < -min(half_ext.x, half_ext.y) * 0.22) {
+      outColor.a *= 0.18;
+    }
   } else if (prim_type < 3.5) {
     // 3.0: Circular / Oval SMD Pad
     vec2 norm_p = v_local_pos / max(v_seg_len_and_r, vec2(0.01));
-    if (length(norm_p) > 1.0) discard;
+    float l = length(norm_p);
+    if (l > 1.0) discard;
+    if (sketch && l < 0.78) {
+      outColor.a *= 0.18;
+    }
   } else if (prim_type < 4.5) {
     // 4.0: Square / Rectangular Plated Through-Hole Pad (Pin 1) with Circular Drill Hole
     vec2 half_ext = v_seg_len_and_r;
@@ -393,10 +464,10 @@ void main() {
     if (d > 0.0) discard;
     float dist = length(v_local_pos);
     if (dist < drill_r * 0.86) {
-      outColor = vec4(0.038, 0.045, 0.062, 1.0); // Plated drill hole center
+      outColor = vec4(0.038, 0.045, 0.062, 1.0);
       return;
     } else if (dist < drill_r * 1.06) {
-      outColor = vec4(0.55, 0.44, 0.18, 1.0); // Inner hole barrel rim
+      outColor = vec4(0.55, 0.44, 0.18, 1.0);
     }
   } else if (prim_type < 7.5) {
     // 5.0..7.0: DRC Marker Ring / Review Annotation Target
@@ -404,10 +475,8 @@ void main() {
     float outer_r = v_seg_len_and_r.x;
     if (dist > outer_r) discard;
     if (prim_type < 5.5) {
-      // DRC Ring
       if (dist < outer_r * 0.55) discard;
     } else {
-      // Review Target Marker
       if (dist > outer_r * 0.76) {
         outColor = vec4(0.95, 0.97, 1.0, 1.0);
       }
@@ -452,6 +521,12 @@ pub struct RustGpuRenderer {
     pub hovered_instance_id: i32,
     pub selected_net_id: i32,
     pub selected_instance_id: i32,
+    pub high_contrast_mode: u8, // 0 = Normal, 1 = Dim Inactive, 2 = Hide Inactive
+    pub flip_board_view: bool,
+    pub sketch_mode: bool,
+    pub show_grid: bool,
+    pub grid_step_mm: f32,
+    pub active_draw_layer_bit: u32,
 }
 
 impl RustGpuRenderer {
@@ -500,8 +575,8 @@ impl RustGpuRenderer {
             center_mm: (130.0, 95.0),
             scale_px_per_mm: 8.0,
             bounds: [70.0, 40.0, 190.0, 150.0],
-            active_layer_mask: 4607,
-            opacities: [0.92, 0.78, 0.88, 0.45],
+            active_layer_mask: 0x7FFFFF,
+            opacities: [0.92, 0.78, 0.90, 0.45],
             diff_mode: 0.0,
             wipe_ratio: 0.5,
             mode_3d_explode: 0.0,
@@ -510,6 +585,12 @@ impl RustGpuRenderer {
             hovered_instance_id: -1,
             selected_net_id: 0,
             selected_instance_id: -1,
+            high_contrast_mode: 0,
+            flip_board_view: false,
+            sketch_mode: false,
+            show_grid: true,
+            grid_step_mm: 0.5,
+            active_draw_layer_bit: 1,
         })
     }
 
@@ -554,7 +635,8 @@ impl RustGpuRenderer {
         let dpr = web_sys::window()
             .map(|w| w.device_pixel_ratio())
             .unwrap_or(1.0) as f32;
-        let px_x = ((client_x - rect.left()) - rect.width() * 0.5) as f32 * dpr;
+        let flip_sign = if self.flip_board_view { -1.0 } else { 1.0 };
+        let px_x = ((client_x - rect.left()) - rect.width() * 0.5) as f32 * dpr * flip_sign;
         let px_y = ((client_y - rect.top()) - rect.height() * 0.5) as f32 * dpr;
         let rx = px_x / self.scale_px_per_mm;
         let sy_mm = px_y / self.scale_px_per_mm;
@@ -571,6 +653,29 @@ impl RustGpuRenderer {
         }
     }
 
+    /// Projects board (mm_x, mm_y, z_mm) into device pixel coordinates on the canvas
+    pub fn board_mm_to_device_px(&self, mm_x: f32, mm_y: f32, z_layer: f32) -> (f64, f64) {
+        let cw = self.canvas.width() as f32;
+        let ch = self.canvas.height() as f32;
+        let mut rel_x = mm_x - self.center_mm.0;
+        let mut rel_y = mm_y - self.center_mm.1;
+        if self.mode_3d_explode > 0.05 {
+            let z = z_layer * self.mode_3d_explode;
+            let cy = self.yaw_rad.cos();
+            let sy = self.yaw_rad.sin();
+            let cp = self.pitch_rad.cos();
+            let sp = self.pitch_rad.sin();
+            let rx = rel_x * cy - rel_y * sy;
+            let ry = rel_x * sy + rel_y * cy;
+            rel_x = rx;
+            rel_y = ry * cp - z * sp;
+        }
+        let flip_sign = if self.flip_board_view { -1.0 } else { 1.0 };
+        let px_x = cw * 0.5 + rel_x * self.scale_px_per_mm * flip_sign;
+        let px_y = ch * 0.5 + rel_y * self.scale_px_per_mm;
+        (px_x as f64, px_y as f64)
+    }
+
     pub fn zoom_at_cursor(&mut self, factor: f32, client_x: f64, client_y: f64) {
         let before = self.screen_to_board_mm(client_x, client_y);
         self.scale_px_per_mm = (self.scale_px_per_mm * factor).clamp(1.5, 500.0);
@@ -583,7 +688,8 @@ impl RustGpuRenderer {
         let dpr = web_sys::window()
             .map(|w| w.device_pixel_ratio())
             .unwrap_or(1.0) as f32;
-        let dx_mm = (dx as f32 * dpr) / self.scale_px_per_mm;
+        let flip_sign = if self.flip_board_view { -1.0 } else { 1.0 };
+        let dx_mm = (dx as f32 * dpr * flip_sign) / self.scale_px_per_mm;
         let dy_mm = (dy as f32 * dpr) / self.scale_px_per_mm;
         if self.mode_3d_explode > 0.05 {
             let cy = self.yaw_rad.cos();
@@ -610,7 +716,7 @@ impl RustGpuRenderer {
         let h = self.canvas.height() as i32;
 
         self.gl.viewport(0, 0, w, h);
-        self.gl.clear_color(0.055, 0.062, 0.075, 1.0);
+        self.gl.clear_color(0.055, 0.062, 0.072, 1.0);
         self.gl.clear(GL::COLOR_BUFFER_BIT);
 
         self.gl.bind_vertex_array(Some(&self.vao));
@@ -624,15 +730,20 @@ impl RustGpuRenderer {
                 self.center_mm.0,
                 self.center_mm.1,
                 self.scale_px_per_mm,
-                self.active_layer_mask as f32,
+                self.grid_step_mm,
             );
         }
         if let Some(u2) = self
             .gl
             .get_uniform_location(&self.bg_program, "u_viewport_and_opacities")
         {
-            self.gl
-                .uniform4f(Some(&u2), w as f32, h as f32, 1.0, 1.0);
+            self.gl.uniform4f(
+                Some(&u2),
+                w as f32,
+                h as f32,
+                if self.show_grid { 1.0 } else { 0.0 },
+                if self.flip_board_view { 1.0 } else { 0.0 },
+            );
         }
         if let Some(ub) = self.gl.get_uniform_location(&self.bg_program, "u_board_bounds") {
             self.gl.uniform4f(
@@ -707,6 +818,16 @@ impl RustGpuRenderer {
                 self.yaw_rad,
                 self.pitch_rad,
                 self.hovered_instance_id as f32,
+            );
+        }
+
+        if let Some(ud) = self.gl.get_uniform_location(&self.program, "u_display_opts") {
+            self.gl.uniform4f(
+                Some(&ud),
+                self.high_contrast_mode as f32,
+                if self.flip_board_view { 1.0 } else { 0.0 },
+                if self.sketch_mode { 1.0 } else { 0.0 },
+                self.active_draw_layer_bit as f32,
             );
         }
 

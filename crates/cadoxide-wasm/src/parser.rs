@@ -7,15 +7,39 @@ pub const LAYER_F_SILKS: u32 = 1 << 3;
 pub const LAYER_B_SILKS: u32 = 1 << 4;
 pub const LAYER_F_MASK: u32 = 1 << 5;
 pub const LAYER_B_MASK: u32 = 1 << 6;
-/// Special layer bits for GPU-instanced Review Pins & DRC Markers
 pub const LAYER_DRC_MARKER: u32 = 1 << 7;
 pub const LAYER_REVIEW_PIN: u32 = 1 << 8;
-/// Special layer bits for GPU Vector Diff Engine:
-/// Bit 9 = Unchanged copper, Bit 10 = Removed in Rev B (Red), Bit 11 = Added in Rev B (Green)
 pub const LAYER_DIFF_UNCHANGED: u32 = 1 << 9;
 pub const LAYER_DIFF_REMOVED: u32 = 1 << 10;
 pub const LAYER_DIFF_ADDED: u32 = 1 << 11;
-pub const LAYER_IN_CU: u32 = 1 << 12;
+pub const LAYER_IN1_CU: u32 = 1 << 12;
+pub const LAYER_IN_CU: u32 = LAYER_IN1_CU;
+pub const LAYER_IN2_CU: u32 = 1 << 13;
+pub const LAYER_F_PASTE: u32 = 1 << 14;
+pub const LAYER_B_PASTE: u32 = 1 << 15;
+pub const LAYER_F_CRTYD: u32 = 1 << 16;
+pub const LAYER_B_CRTYD: u32 = 1 << 17;
+pub const LAYER_F_FAB: u32 = 1 << 18;
+pub const LAYER_B_FAB: u32 = 1 << 19;
+pub const LAYER_USER_DWGS: u32 = 1 << 20;
+pub const LAYER_USER_CMTS: u32 = 1 << 21;
+pub const LAYER_MARGIN: u32 = 1 << 22;
+
+pub const ALL_VISIBLE_LAYERS_DEFAULT: u32 = LAYER_F_CU
+    | LAYER_B_CU
+    | LAYER_IN1_CU
+    | LAYER_IN2_CU
+    | LAYER_F_SILKS
+    | LAYER_B_SILKS
+    | LAYER_EDGE_CUTS
+    | LAYER_F_CRTYD
+    | LAYER_B_CRTYD
+    | LAYER_F_FAB
+    | LAYER_USER_DWGS
+    | LAYER_USER_CMTS
+    | LAYER_MARGIN
+    | LAYER_DRC_MARKER
+    | LAYER_REVIEW_PIN;
 
 pub const FLOATS_PER_INSTANCE: usize = 8;
 const SPATIAL_CELL_MM: f32 = 2.5;
@@ -31,9 +55,53 @@ pub struct NetStats {
 }
 
 #[derive(Clone, Debug)]
+pub struct CopperZone {
+    pub net_id: u32,
+    pub net_name: String,
+    pub layer_mask: u32,
+    pub is_keepout: bool,
+    pub is_teardrop: bool,
+    pub outline: Vec<(f32, f32)>,
+    pub filled_polys: Vec<Vec<(f32, f32)>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PadLabel {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub pin: String,
+    pub net_id: u32,
+    pub net_name: String,
+    pub layer_mask: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct BoardText {
+    pub x: f32,
+    pub y: f32,
+    pub angle_deg: f32,
+    pub text: String,
+    pub size_mm: f32,
+    pub layer_mask: u32,
+    pub is_ref: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct CadDimension {
+    pub x0: f32,
+    pub y0: f32,
+    pub x1: f32,
+    pub y1: f32,
+    pub layer_mask: u32,
+}
+
+#[derive(Clone, Debug)]
 pub struct HoveredPrimitiveInfo {
     pub instance_idx: usize,
     pub kind: &'static str,
+    pub prim_type: i32,
     pub layer_name: &'static str,
     pub net_id: u32,
     pub net_name: String,
@@ -42,13 +110,20 @@ pub struct HoveredPrimitiveInfo {
     pub center_y: f32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ParsedBoard {
     pub instances: Vec<f32>,
     pub primitive_count: usize,
     pub bounds: [f32; 4], // [min_x, min_y, max_x, max_y]
     pub spatial_grid: HashMap<(i32, i32), Vec<u32>>,
     pub nets: HashMap<u32, NetStats>,
+    pub zones: Vec<CopperZone>,
+    pub pad_labels: Vec<PadLabel>,
+    pub texts: Vec<BoardText>,
+    pub dimensions: Vec<CadDimension>,
+    pub total_pads: usize,
+    pub total_vias: usize,
+    pub total_tracks: usize,
 }
 
 impl ParsedBoard {
@@ -58,39 +133,22 @@ impl ParsedBoard {
         bounds: [f32; 4],
         nets: HashMap<u32, NetStats>,
     ) -> Self {
-        let mut spatial_grid: HashMap<(i32, i32), Vec<u32>> =
-            HashMap::with_capacity((primitive_count / 4).max(64));
-
-        for (idx, chunk) in instances.chunks_exact(FLOATS_PER_INSTANCE).enumerate() {
-            let x0 = chunk[0];
-            let y0 = chunk[1];
-            let x1 = chunk[2];
-            let y1 = chunk[3];
-            let r = chunk[4].max(chunk[5]).max(0.25);
-
-            let min_cx = ((x0.min(x1) - r) / SPATIAL_CELL_MM).floor() as i32;
-            let max_cx = ((x0.max(x1) + r) / SPATIAL_CELL_MM).floor() as i32;
-            let min_cy = ((y0.min(y1) - r) / SPATIAL_CELL_MM).floor() as i32;
-            let max_cy = ((y0.max(y1) + r) / SPATIAL_CELL_MM).floor() as i32;
-
-            // Clamp span for very long board-outline segments
-            let span_x = (max_cx - min_cx).min(24);
-            let span_y = (max_cy - min_cy).min(24);
-
-            for cx in min_cx..=(min_cx + span_x) {
-                for cy in min_cy..=(min_cy + span_y) {
-                    spatial_grid.entry((cx, cy)).or_default().push(idx as u32);
-                }
-            }
-        }
-
-        Self {
+        let mut board = Self {
             instances,
             primitive_count,
             bounds,
-            spatial_grid,
+            spatial_grid: HashMap::new(),
             nets,
-        }
+            zones: Vec::new(),
+            pad_labels: Vec::new(),
+            texts: Vec::new(),
+            dimensions: Vec::new(),
+            total_pads: 0,
+            total_vias: 0,
+            total_tracks: 0,
+        };
+        board.rebuild_index_and_nets();
+        board
     }
 
     /// O(1) sub-microsecond spatial hash query for real-time cursor hover & click inspection.
@@ -100,6 +158,19 @@ impl ParsedBoard {
         mm_y: f32,
         visible_mask: u32,
         max_dist_mm: f32,
+    ) -> Option<HoveredPrimitiveInfo> {
+        self.query_nearest_filtered(mm_x, mm_y, visible_mask, max_dist_mm, 0xFFFF)
+    }
+
+    /// O(1) spatial hash query with KiCad Selection Filter mask:
+    /// bit 0 (1) = Tracks, bit 1 (2) = Vias, bit 2 (4) = Pads, bit 3 (8) = Graphics
+    pub fn query_nearest_filtered(
+        &self,
+        mm_x: f32,
+        mm_y: f32,
+        visible_mask: u32,
+        max_dist_mm: f32,
+        sel_filter_mask: u32,
     ) -> Option<HoveredPrimitiveInfo> {
         let cx = (mm_x / SPATIAL_CELL_MM).floor() as i32;
         let cy = (mm_y / SPATIAL_CELL_MM).floor() as i32;
@@ -122,17 +193,37 @@ impl ParsedBoard {
                             continue;
                         }
 
+                        let raw_w = chunk[7];
+                        let net_id = (raw_w / 16.0).floor() as u32;
+                        let prim_type = (raw_w - (net_id as f32) * 16.0).round() as i32;
+                        let is_copper = (layer_bits
+                            & (LAYER_F_CU | LAYER_B_CU | LAYER_IN1_CU | LAYER_IN2_CU))
+                            != 0;
+
+                        // Selection filter check
+                        let allowed = match prim_type {
+                            0 => {
+                                if is_copper {
+                                    (sel_filter_mask & 1) != 0
+                                } else {
+                                    (sel_filter_mask & 8) != 0
+                                }
+                            }
+                            1 => (sel_filter_mask & 2) != 0 || (sel_filter_mask & 4) != 0,
+                            2..=4 => (sel_filter_mask & 4) != 0,
+                            _ => (sel_filter_mask & 8) != 0,
+                        };
+                        if !allowed {
+                            continue;
+                        }
+
                         let x0 = chunk[0];
                         let y0 = chunk[1];
                         let x1 = chunk[2];
                         let y1 = chunk[3];
                         let r = (chunk[4] * 0.5).max(0.10);
-                        let raw_w = chunk[7];
-                        let net_id = (raw_w / 16.0).floor() as u32;
-                        let prim_type = (raw_w - (net_id as f32) * 16.0).round() as i32;
 
                         let dist = if prim_type == 0 {
-                            // Point-to-segment distance for capsule tracks
                             let vx = x1 - x0;
                             let vy = y1 - y0;
                             let len_sq = vx * vx + vy * vy;
@@ -184,27 +275,7 @@ impl ParsedBoard {
                 }
             });
 
-        let layer_name = if (layer_bits & LAYER_F_CU) != 0 && (layer_bits & LAYER_B_CU) != 0 {
-            "Multi/PTH"
-        } else if (layer_bits & LAYER_F_CU) != 0 {
-            "F.Cu"
-        } else if (layer_bits & LAYER_IN_CU) != 0 {
-            "In1..4.Cu"
-        } else if (layer_bits & LAYER_B_CU) != 0 {
-            "B.Cu"
-        } else if (layer_bits & LAYER_EDGE_CUTS) != 0 {
-            "Edge.Cuts"
-        } else if (layer_bits & LAYER_F_SILKS) != 0 {
-            "F.SilkS"
-        } else if (layer_bits & LAYER_B_SILKS) != 0 {
-            "B.SilkS"
-        } else if (layer_bits & LAYER_F_MASK) != 0 {
-            "F.Mask"
-        } else if (layer_bits & LAYER_B_MASK) != 0 {
-            "B.Mask"
-        } else {
-            "Other"
-        };
+        let layer_name = layer_bits_to_name(layer_bits);
 
         let net_tag = if net_id > 0 {
             format!(" | Net: {}", net_name)
@@ -254,6 +325,7 @@ impl ParsedBoard {
         Some(HoveredPrimitiveInfo {
             instance_idx: idx,
             kind,
+            prim_type,
             layer_name,
             net_id,
             net_name,
@@ -282,6 +354,40 @@ impl ParsedBoard {
         true
     }
 
+    pub fn rotate_primitive_90(&mut self, idx: usize) -> bool {
+        let base = idx * FLOATS_PER_INSTANCE;
+        if base + FLOATS_PER_INSTANCE > self.instances.len() {
+            return false;
+        }
+        let x0 = self.instances[base];
+        let y0 = self.instances[base + 1];
+        let x1 = self.instances[base + 2];
+        let y1 = self.instances[base + 3];
+        let w = self.instances[base + 4];
+        let h = self.instances[base + 5];
+        let raw_w = self.instances[base + 7];
+        let net_id = (raw_w / 16.0).floor() as u32;
+        let prim_type = (raw_w - (net_id as f32) * 16.0).round() as i32;
+
+        if prim_type == 0 {
+            let cx = 0.5 * (x0 + x1);
+            let cy = 0.5 * (y0 + y1);
+            let dx0 = x0 - cx;
+            let dy0 = y0 - cy;
+            let dx1 = x1 - cx;
+            let dy1 = y1 - cy;
+            self.instances[base] = cx - dy0;
+            self.instances[base + 1] = cy + dx0;
+            self.instances[base + 2] = cx - dy1;
+            self.instances[base + 3] = cy + dx1;
+        } else if prim_type == 2 || prim_type == 3 {
+            self.instances[base + 4] = h;
+            self.instances[base + 5] = w;
+        }
+        self.rebuild_index_and_nets();
+        true
+    }
+
     pub fn translate_primitive_in_place(&mut self, idx: usize, dx: f32, dy: f32) -> bool {
         let base = idx * FLOATS_PER_INSTANCE;
         if base + FLOATS_PER_INSTANCE > self.instances.len() {
@@ -304,6 +410,7 @@ impl ParsedBoard {
         true
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn add_primitive(
         &mut self,
         x0: f32,
@@ -327,6 +434,9 @@ impl ParsedBoard {
     pub fn rebuild_index_and_nets(&mut self) {
         self.primitive_count = self.instances.len() / FLOATS_PER_INSTANCE;
         self.spatial_grid.clear();
+        self.total_pads = 0;
+        self.total_vias = 0;
+        self.total_tracks = 0;
 
         for stats in self.nets.values_mut() {
             stats.total_length_mm = 0.0;
@@ -334,6 +444,8 @@ impl ParsedBoard {
             stats.via_count = 0;
             stats.pad_count = 0;
         }
+
+        let copper_mask = LAYER_F_CU | LAYER_B_CU | LAYER_IN1_CU | LAYER_IN2_CU;
 
         for (idx, chunk) in self.instances.chunks_exact(FLOATS_PER_INSTANCE).enumerate() {
             let x0 = chunk[0];
@@ -363,20 +475,27 @@ impl ParsedBoard {
                 }
             }
 
+            if prim_type == 0 && (layer_bits & copper_mask) != 0 {
+                self.total_tracks += 1;
+            } else if prim_type == 1 {
+                self.total_vias += 1;
+            } else if (2..=4).contains(&prim_type) {
+                self.total_pads += 1;
+            }
+
             if net_id > 0 {
                 let entry = self.nets.entry(net_id).or_insert_with(|| NetStats {
                     id: net_id,
                     name: format!("Net-{}", net_id),
                     ..Default::default()
                 });
-                let copper_mask = LAYER_F_CU | LAYER_B_CU | LAYER_IN_CU;
                 if prim_type == 0 && (layer_bits & copper_mask) != 0 {
                     let seg_len = ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt();
                     entry.total_length_mm += seg_len;
                     entry.segment_count += 1;
                 } else if prim_type == 1 {
                     entry.via_count += 1;
-                } else if prim_type >= 2 && prim_type <= 4 {
+                } else if (2..=4).contains(&prim_type) {
                     entry.pad_count += 1;
                 }
             }
@@ -387,7 +506,7 @@ impl ParsedBoard {
         let mut out = String::with_capacity(self.primitive_count * 96 + 512);
         out.push_str("(kicad_pcb (version 20240108) (generator \"cadoxide_eda\")\n");
         out.push_str("  (general (thickness 1.6))\n");
-        out.push_str("  (layers\n    (0 \"F.Cu\" signal)\n    (1 \"In1.Cu\" signal)\n    (31 \"B.Cu\" signal)\n    (36 \"B.SilkS\" user)\n    (37 \"F.SilkS\" user)\n    (38 \"B.Mask\" user)\n    (39 \"F.Mask\" user)\n    (44 \"Edge.Cuts\" user)\n  )\n");
+        out.push_str("  (layers\n    (0 \"F.Cu\" signal)\n    (1 \"In1.Cu\" signal)\n    (2 \"In2.Cu\" signal)\n    (31 \"B.Cu\" signal)\n    (36 \"B.SilkS\" user)\n    (37 \"F.SilkS\" user)\n    (38 \"B.Mask\" user)\n    (39 \"F.Mask\" user)\n    (44 \"Edge.Cuts\" user)\n    (46 \"B.CrtYd\" user)\n    (47 \"F.CrtYd\" user)\n    (48 \"B.Fab\" user)\n    (49 \"F.Fab\" user)\n  )\n");
 
         let mut net_list: Vec<_> = self.nets.values().collect();
         net_list.sort_by_key(|n| n.id);
@@ -409,24 +528,11 @@ impl ParsedBoard {
             let raw_w = chunk[7];
             let net_id = (raw_w / 16.0).floor() as u32;
             let prim_type = (raw_w - (net_id as f32) * 16.0).round() as i32;
-
-            let layer_str = if (layer_bits & LAYER_F_CU) != 0 {
-                "F.Cu"
-            } else if (layer_bits & LAYER_IN_CU) != 0 {
-                "In1.Cu"
-            } else if (layer_bits & LAYER_B_CU) != 0 {
-                "B.Cu"
-            } else if (layer_bits & LAYER_EDGE_CUTS) != 0 {
-                "Edge.Cuts"
-            } else if (layer_bits & LAYER_F_SILKS) != 0 {
-                "F.SilkS"
-            } else {
-                "F.Cu"
-            };
+            let layer_str = layer_bits_to_name(layer_bits);
 
             match prim_type {
                 0 => {
-                    if (layer_bits & (LAYER_F_CU | LAYER_B_CU | LAYER_IN_CU)) != 0 {
+                    if (layer_bits & (LAYER_F_CU | LAYER_B_CU | LAYER_IN1_CU | LAYER_IN2_CU)) != 0 {
                         out.push_str(&format!(
                             "  (segment (start {:.4} {:.4}) (end {:.4} {:.4}) (width {:.4}) (layer \"{}\") (net {}))\n",
                             x0, y0, x1, y1, w, layer_str, net_id
@@ -454,16 +560,79 @@ impl ParsedBoard {
                 _ => {}
             }
         }
+
+        for t in &self.texts {
+            if !t.is_ref {
+                out.push_str(&format!(
+                    "  (gr_text \"{}\" (at {:.4} {:.4} {:.1}) (layer \"{}\") (effects (font (size {:.2} {:.2}))))\n",
+                    t.text,
+                    t.x,
+                    t.y,
+                    t.angle_deg,
+                    layer_bits_to_name(t.layer_mask),
+                    t.size_mm,
+                    t.size_mm
+                ));
+            }
+        }
+
         out.push_str(")\n");
         out
     }
 }
 
-/// Parses a KiCad `.kicad_pcb` file in pure Rust into a flat 8-float-per-instance GPU buffer.
+pub fn layer_bits_to_name(layer_bits: u32) -> &'static str {
+    if (layer_bits & LAYER_F_CU) != 0 && (layer_bits & LAYER_B_CU) != 0 {
+        "Multi/PTH"
+    } else if (layer_bits & LAYER_F_CU) != 0 {
+        "F.Cu"
+    } else if (layer_bits & LAYER_IN1_CU) != 0 {
+        "In1.Cu"
+    } else if (layer_bits & LAYER_IN2_CU) != 0 {
+        "In2.Cu"
+    } else if (layer_bits & LAYER_B_CU) != 0 {
+        "B.Cu"
+    } else if (layer_bits & LAYER_F_PASTE) != 0 {
+        "F.Paste"
+    } else if (layer_bits & LAYER_B_PASTE) != 0 {
+        "B.Paste"
+    } else if (layer_bits & LAYER_F_SILKS) != 0 {
+        "F.SilkS"
+    } else if (layer_bits & LAYER_B_SILKS) != 0 {
+        "B.SilkS"
+    } else if (layer_bits & LAYER_F_MASK) != 0 {
+        "F.Mask"
+    } else if (layer_bits & LAYER_B_MASK) != 0 {
+        "B.Mask"
+    } else if (layer_bits & LAYER_EDGE_CUTS) != 0 {
+        "Edge.Cuts"
+    } else if (layer_bits & LAYER_MARGIN) != 0 {
+        "Margin"
+    } else if (layer_bits & LAYER_F_CRTYD) != 0 {
+        "F.CrtYd"
+    } else if (layer_bits & LAYER_B_CRTYD) != 0 {
+        "B.CrtYd"
+    } else if (layer_bits & LAYER_F_FAB) != 0 {
+        "F.Fab"
+    } else if (layer_bits & LAYER_B_FAB) != 0 {
+        "B.Fab"
+    } else if (layer_bits & LAYER_USER_DWGS) != 0 {
+        "User.Drawings"
+    } else if (layer_bits & LAYER_USER_CMTS) != 0 {
+        "User.Comments"
+    } else {
+        "F.Cu"
+    }
+}
+
+/// Parses a KiCad `.kicad_pcb` file in pure Rust into GPU instances, copper zones, pad labels, and texts.
 pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
     let mut instances = Vec::with_capacity(8192 * FLOATS_PER_INSTANCE);
     let mut primitive_count = 0;
     let mut nets: HashMap<u32, NetStats> = HashMap::new();
+    let mut zones: Vec<CopperZone> = Vec::new();
+    let mut pad_labels: Vec<PadLabel> = Vec::new();
+    let mut texts: Vec<BoardText> = Vec::new();
 
     let mut min_x = f32::MAX;
     let mut min_y = f32::MAX;
@@ -471,14 +640,15 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
     let mut max_y = f32::MIN;
 
     let mut in_footprint = false;
+    let mut fp_depth: i32 = 0;
     let mut fp_x: f32 = 0.0;
     let mut fp_y: f32 = 0.0;
     let mut fp_rot_rad: f32 = 0.0;
-    let mut fp_depth: i32 = 0;
 
-    let mut active_block = String::with_capacity(512);
+    let mut active_block = String::with_capacity(4096);
     let mut block_depth: i32 = 0;
     let mut collecting_block = false;
+    let mut collecting_zone = false;
 
     for raw_line in pcb_source.lines() {
         let line = raw_line.trim();
@@ -497,20 +667,27 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
             }
             if block_depth <= 0 {
                 collecting_block = false;
-                process_primitive_block(
-                    &active_block,
-                    in_footprint,
-                    fp_x,
-                    fp_y,
-                    fp_rot_rad,
-                    &mut instances,
-                    &mut primitive_count,
-                    &mut nets,
-                    &mut min_x,
-                    &mut min_y,
-                    &mut max_x,
-                    &mut max_y,
-                );
+                if collecting_zone {
+                    collecting_zone = false;
+                    parse_zone_block(&active_block, &mut zones);
+                } else {
+                    process_primitive_block(
+                        &active_block,
+                        in_footprint,
+                        fp_x,
+                        fp_y,
+                        fp_rot_rad,
+                        &mut instances,
+                        &mut primitive_count,
+                        &mut nets,
+                        &mut pad_labels,
+                        &mut texts,
+                        &mut min_x,
+                        &mut min_y,
+                        &mut max_x,
+                        &mut max_y,
+                    );
+                }
                 active_block.clear();
             }
             if in_footprint && fp_depth <= 0 {
@@ -559,6 +736,19 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
             }
         }
 
+        if !in_footprint && is_token_start(line, "(zone") {
+            if line_delta <= 0 {
+                parse_zone_block(line, &mut zones);
+            } else {
+                active_block.clear();
+                active_block.push_str(line);
+                block_depth = line_delta;
+                collecting_block = true;
+                collecting_zone = true;
+            }
+            continue;
+        }
+
         if is_token_start(line, "(segment")
             || is_token_start(line, "(via")
             || is_token_start(line, "(gr_line")
@@ -569,7 +759,10 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
             || is_token_start(line, "(fp_circle")
             || is_token_start(line, "(gr_arc")
             || is_token_start(line, "(fp_arc")
-            || (in_footprint && is_token_start(line, "(pad"))
+            || is_token_start(line, "(gr_text")
+            || is_token_start(line, "(fp_text")
+            || (in_footprint
+                && (is_token_start(line, "(pad") || is_token_start(line, "(property")))
         {
             if line_delta <= 0 {
                 process_primitive_block(
@@ -581,6 +774,8 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
                     &mut instances,
                     &mut primitive_count,
                     &mut nets,
+                    &mut pad_labels,
+                    &mut texts,
                     &mut min_x,
                     &mut min_y,
                     &mut max_x,
@@ -591,6 +786,16 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
                 active_block.push_str(line);
                 block_depth = line_delta;
                 collecting_block = true;
+                collecting_zone = false;
+            }
+        }
+    }
+
+    // Backfill pad_labels net_name from top-level nets table if any were missing
+    for pl in &mut pad_labels {
+        if pl.net_name.is_empty() && pl.net_id > 0 {
+            if let Some(n) = nets.get(&pl.net_id) {
+                pl.net_name = n.name.clone();
             }
         }
     }
@@ -601,11 +806,80 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
         [70.0, 40.0, 190.0, 150.0]
     };
 
-    ParsedBoard::with_spatial_grid(instances, primitive_count, bounds, nets)
+    let mut board = ParsedBoard::with_spatial_grid(instances, primitive_count, bounds, nets);
+    board.zones = zones;
+    board.pad_labels = pad_labels;
+    board.texts = texts;
+    board
+}
+
+fn parse_zone_block(block: &str, zones: &mut Vec<CopperZone>) {
+    let (net_id, net_name_opt) = extract_net_def(block).unwrap_or((0, None));
+    let net_name = extract_quoted_after(block, "(net_name ")
+        .or(net_name_opt)
+        .unwrap_or_default();
+    let layer_mask = extract_layer_mask(block);
+    if layer_mask == 0 {
+        return;
+    }
+    let is_keepout = block.contains("(keepout");
+    let is_teardrop = block.contains("$teardrop");
+
+    let mut outline = Vec::new();
+    if let Some(poly_idx) = block.find("(polygon") {
+        let rest = &block[poly_idx..];
+        let end_idx = rest.find("(filled_polygon").unwrap_or(rest.len());
+        outline = extract_xy_pts(&rest[..end_idx]);
+    }
+
+    let mut filled_polys = Vec::new();
+    let mut search_from = 0;
+    while let Some(rel_idx) = block[search_from..].find("(filled_polygon") {
+        let start = search_from + rel_idx;
+        let sub = &block[start + 15..];
+        let next_fp = sub.find("(filled_polygon").unwrap_or(sub.len());
+        let pts = extract_xy_pts(&sub[..next_fp]);
+        if pts.len() >= 3 {
+            filled_polys.push(pts);
+        }
+        search_from = start + 15 + next_fp;
+    }
+
+    if !outline.is_empty() || !filled_polys.is_empty() {
+        zones.push(CopperZone {
+            net_id,
+            net_name,
+            layer_mask,
+            is_keepout,
+            is_teardrop,
+            outline,
+            filled_polys,
+        });
+    }
+}
+
+fn extract_xy_pts(s: &str) -> Vec<(f32, f32)> {
+    let mut pts = Vec::new();
+    let mut cursor = 0;
+    while let Some(idx) = s[cursor..].find("(xy ") {
+        let after = cursor + idx + 4;
+        if let Some(close) = s[after..].find(')') {
+            let inner = &s[after..after + close];
+            let mut it = inner.split_whitespace();
+            if let (Some(xs), Some(ys)) = (it.next(), it.next()) {
+                if let (Ok(x), Ok(y)) = (xs.parse::<f32>(), ys.parse::<f32>()) {
+                    pts.push((x, y));
+                }
+            }
+            cursor = after + close + 1;
+        } else {
+            break;
+        }
+    }
+    pts
 }
 
 /// Computes a pure-Rust geometric vector diff between Revision A and Revision B!
-/// Returns (diff_board, added_count, removed_count, unchanged_count).
 pub fn compute_vector_diff_boards(
     board_a: &ParsedBoard,
     board_b: &ParsedBoard,
@@ -637,7 +911,6 @@ pub fn compute_vector_diff_boards(
     let mut removed = 0usize;
     let mut unchanged = 0usize;
 
-    // 1. Add unchanged & removed primitives from Board A
     for chunk in board_a.instances.chunks_exact(FLOATS_PER_INSTANCE) {
         let key = quantize(chunk);
         let mut inst = [0.0f32; FLOATS_PER_INSTANCE];
@@ -652,7 +925,6 @@ pub fn compute_vector_diff_boards(
         out_instances.extend_from_slice(&inst);
     }
 
-    // 2. Add newly added primitives from Board B
     for chunk in board_b.instances.chunks_exact(FLOATS_PER_INSTANCE) {
         let key = quantize(chunk);
         if !set_a.contains(&key) {
@@ -788,6 +1060,8 @@ fn process_primitive_block(
     instances: &mut Vec<f32>,
     primitive_count: &mut usize,
     nets: &mut HashMap<u32, NetStats>,
+    pad_labels: &mut Vec<PadLabel>,
+    texts: &mut Vec<BoardText>,
     min_x: &mut f32,
     min_y: &mut f32,
     max_x: &mut f32,
@@ -1001,8 +1275,11 @@ fn process_primitive_block(
             let is_circle_or_oval = block.contains(" circle ") || block.contains(" oval ");
             let layer_mask = extract_layer_mask(block);
             let (net_id, net_name_opt) = extract_net_def(block).unwrap_or((0, None));
+            let pin_num = extract_pad_pin_number(block);
+
             if layer_mask != 0 {
                 update_bounds(wx, wy);
+                let mut resolved_net_name = net_name_opt.clone().unwrap_or_default();
                 if net_id > 0 {
                     let entry = nets.entry(net_id).or_insert_with(|| NetStats {
                         id: net_id,
@@ -1014,18 +1291,33 @@ fn process_primitive_block(
                             entry.name = n;
                         }
                     }
+                    if resolved_net_name.is_empty() {
+                        resolved_net_name = entry.name.clone();
+                    }
                 }
                 let (out_w, out_h, pad_prim) = if drill > 0.01 {
                     if is_circle_or_oval {
-                        (pw.max(ph), drill, 1.0) // Circular/Oval Plated Through-Hole Pad
+                        (pw.max(ph), drill, 1.0)
                     } else {
-                        (pw.max(ph), drill, 4.0) // Square/Rect Plated Through-Hole Pad (Pin 1)
+                        (pw.max(ph), drill, 4.0)
                     }
                 } else if is_circle_or_oval {
-                    (pw, ph, 3.0) // Circular/Oval SMD Pad
+                    (pw, ph, 3.0)
                 } else {
-                    (pw, ph, 2.0) // Rectangular/Roundrect SMD Pad
+                    (pw, ph, 2.0)
                 };
+
+                pad_labels.push(PadLabel {
+                    x: wx,
+                    y: wy,
+                    w: pw,
+                    h: ph,
+                    pin: pin_num,
+                    net_id,
+                    net_name: resolved_net_name,
+                    layer_mask,
+                });
+
                 let encoded = (net_id as f32) * 16.0 + pad_prim;
                 push_raw(
                     instances,
@@ -1041,6 +1333,109 @@ fn process_primitive_block(
                 );
             }
         }
+    } else if (is_token_start(block, "(property")
+        || is_token_start(block, "(fp_text")
+        || is_token_start(block, "(gr_text"))
+        && !block.contains("(hide yes)")
+        && !block.contains(" hide ")
+    {
+        if let Some((lx, ly, lrot)) = parse_at_triple(block) {
+            let layer_mask = extract_layer_mask(block);
+            if layer_mask != 0 {
+                let (wx, wy) = if in_footprint && !is_token_start(block, "(gr_text") {
+                    transform_point(lx, ly, fp_x, fp_y, fp_rot_rad)
+                } else {
+                    (lx, ly)
+                };
+                let size_mm = extract_pair(block, "(size ")
+                    .map(|(sx, _)| sx)
+                    .unwrap_or(1.0);
+                if let Some((txt, is_ref)) = extract_text_value(block) {
+                    if !txt.is_empty() && txt != "~" {
+                        texts.push(BoardText {
+                            x: wx,
+                            y: wy,
+                            angle_deg: lrot,
+                            text: txt,
+                            size_mm,
+                            layer_mask,
+                            is_ref,
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn extract_pad_pin_number(block: &str) -> String {
+    let rest = block.strip_prefix("(pad").unwrap_or(block).trim_start();
+    if let Some(stripped) = rest.strip_prefix('"') {
+        if let Some(end_q) = stripped.find('"') {
+            return stripped[..end_q].to_string();
+        }
+    }
+    rest.split_whitespace().next().unwrap_or("").to_string()
+}
+
+fn extract_quoted_after(s: &str, prefix: &str) -> Option<String> {
+    let idx = s.find(prefix)?;
+    let rest = s[idx + prefix.len()..].trim_start();
+    if let Some(stripped) = rest.strip_prefix('"') {
+        let end_q = stripped.find('"')?;
+        Some(stripped[..end_q].to_string())
+    } else {
+        let end_p = rest.find(')')?;
+        Some(rest[..end_p].trim().to_string())
+    }
+}
+
+fn extract_text_value(block: &str) -> Option<(String, bool)> {
+    if is_token_start(block, "(property") {
+        let mut quotes = Vec::new();
+        let mut in_q = false;
+        let mut start = 0;
+        for (i, ch) in block.char_indices() {
+            if ch == '"' {
+                if in_q {
+                    quotes.push(&block[start..i]);
+                    in_q = false;
+                    if quotes.len() >= 2 {
+                        break;
+                    }
+                } else {
+                    in_q = true;
+                    start = i + 1;
+                }
+            }
+        }
+        if quotes.len() >= 2 {
+            let prop_name = quotes[0];
+            let prop_val = quotes[1];
+            if prop_name == "Reference" {
+                return Some((prop_val.to_string(), true));
+            } else if prop_name == "Value" {
+                return Some((prop_val.to_string(), false));
+            }
+        }
+        None
+    } else if is_token_start(block, "(fp_text") {
+        let is_ref = block.contains("(fp_text reference");
+        let is_val = block.contains("(fp_text value");
+        if !is_ref && !is_val {
+            return None;
+        }
+        let first_q = block.find('"')?;
+        let rest = &block[first_q + 1..];
+        let end_q = rest.find('"')?;
+        Some((rest[..end_q].to_string(), is_ref))
+    } else if is_token_start(block, "(gr_text") {
+        let first_q = block.find('"')?;
+        let rest = &block[first_q + 1..];
+        let end_q = rest.find('"')?;
+        Some((rest[..end_q].to_string(), false))
+    } else {
+        None
     }
 }
 
@@ -1057,7 +1452,6 @@ fn emit_arc_segments(
     width: f32,
     layer_mask: f32,
 ) {
-    // Compute circumcenter of 3 points (sx,sy), (mx,my), (ex,ey)
     let d = 2.0 * (sx * (my - ey) + mx * (ey - sy) + ex * (sy - my));
     if d.abs() < 1e-4 {
         push_raw(instances, primitive_count, sx, sy, mx, my, width, width, layer_mask, 0.0);
@@ -1195,10 +1589,10 @@ fn extract_net_def(s: &str) -> Option<(u32, Option<String>)> {
     Some((id, name))
 }
 
-fn extract_layer_mask(s: &str) -> u32 {
+pub fn extract_layer_mask(s: &str) -> u32 {
     let mut mask = 0u32;
     if s.contains("\"*.Cu\"") {
-        mask |= LAYER_F_CU | LAYER_B_CU | LAYER_IN_CU;
+        mask |= LAYER_F_CU | LAYER_B_CU | LAYER_IN1_CU | LAYER_IN2_CU;
     }
     if s.contains("\"F.Cu\"") {
         mask |= LAYER_F_CU;
@@ -1206,15 +1600,28 @@ fn extract_layer_mask(s: &str) -> u32 {
     if s.contains("\"B.Cu\"") {
         mask |= LAYER_B_CU;
     }
-    if s.contains("\"In1.Cu\"")
-        || s.contains("\"In2.Cu\"")
+    if s.contains("\"In1.Cu\"") {
+        mask |= LAYER_IN1_CU;
+    }
+    if s.contains("\"In2.Cu\"")
         || s.contains("\"In3.Cu\"")
         || s.contains("\"In4.Cu\"")
+        || s.contains("\"In5.Cu\"")
+        || s.contains("\"In6.Cu\"")
     {
-        mask |= LAYER_IN_CU;
+        mask |= LAYER_IN2_CU;
+    }
+    if s.contains("\"F.Paste\"") || s.contains("\"*.Paste\"") {
+        mask |= LAYER_F_PASTE;
+    }
+    if s.contains("\"B.Paste\"") || s.contains("\"*.Paste\"") {
+        mask |= LAYER_B_PASTE;
     }
     if s.contains("\"Edge.Cuts\"") {
         mask |= LAYER_EDGE_CUTS;
+    }
+    if s.contains("\"Margin\"") {
+        mask |= LAYER_MARGIN;
     }
     if s.contains("\"F.SilkS\"") || s.contains("\"F.Silkscreen\"") {
         mask |= LAYER_F_SILKS;
@@ -1230,6 +1637,24 @@ fn extract_layer_mask(s: &str) -> u32 {
     }
     if s.contains("\"B.Mask\"") {
         mask |= LAYER_B_MASK;
+    }
+    if s.contains("\"F.CrtYd\"") || s.contains("\"F.Courtyard\"") {
+        mask |= LAYER_F_CRTYD;
+    }
+    if s.contains("\"B.CrtYd\"") || s.contains("\"B.Courtyard\"") {
+        mask |= LAYER_B_CRTYD;
+    }
+    if s.contains("\"F.Fab\"") {
+        mask |= LAYER_F_FAB;
+    }
+    if s.contains("\"B.Fab\"") {
+        mask |= LAYER_B_FAB;
+    }
+    if s.contains("\"Dwgs.User\"") || s.contains("\"User.Drawings\"") {
+        mask |= LAYER_USER_DWGS;
+    }
+    if s.contains("\"Cmts.User\"") || s.contains("\"User.Comments\"") {
+        mask |= LAYER_USER_CMTS;
     }
     mask
 }
