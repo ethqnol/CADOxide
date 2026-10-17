@@ -126,7 +126,7 @@ impl ParsedBoard {
                         let y0 = chunk[1];
                         let x1 = chunk[2];
                         let y1 = chunk[3];
-                        let r = chunk[4].max(0.15);
+                        let r = (chunk[4] * 0.5).max(0.10);
                         let raw_w = chunk[7];
                         let net_id = (raw_w / 16.0).floor() as u32;
                         let prim_type = (raw_w - (net_id as f32) * 16.0).round() as i32;
@@ -164,8 +164,8 @@ impl ParsedBoard {
         let y0 = chunk[1];
         let x1 = chunk[2];
         let y1 = chunk[3];
-        let r1 = chunk[4];
-        let r2 = chunk[5];
+        let w = chunk[4];
+        let h = chunk[5];
         let layer_bits = chunk[6] as u32;
         let raw_w = chunk[7];
         let net_id = (raw_w / 16.0).floor() as u32;
@@ -185,29 +185,29 @@ impl ParsedBoard {
             });
 
         let layer_name = if (layer_bits & LAYER_F_CU) != 0 && (layer_bits & LAYER_B_CU) != 0 {
-            "F.Cu ↔ B.Cu (PTH)"
+            "Multi/PTH"
         } else if (layer_bits & LAYER_F_CU) != 0 {
-            "F.Cu (Top Copper)"
+            "F.Cu"
         } else if (layer_bits & LAYER_IN_CU) != 0 {
-            "In1..4.Cu (Inner Copper)"
+            "In1..4.Cu"
         } else if (layer_bits & LAYER_B_CU) != 0 {
-            "B.Cu (Bottom Copper)"
+            "B.Cu"
         } else if (layer_bits & LAYER_EDGE_CUTS) != 0 {
-            "Edge.Cuts (Board Outline)"
+            "Edge.Cuts"
         } else if (layer_bits & LAYER_F_SILKS) != 0 {
-            "F.SilkS (Top Silkscreen)"
+            "F.SilkS"
         } else if (layer_bits & LAYER_B_SILKS) != 0 {
-            "B.SilkS (Bottom Silkscreen)"
+            "B.SilkS"
         } else if (layer_bits & LAYER_F_MASK) != 0 {
-            "F.Mask (Top Solder Mask)"
+            "F.Mask"
         } else if (layer_bits & LAYER_B_MASK) != 0 {
-            "B.Mask (Bottom Solder Mask)"
+            "B.Mask"
         } else {
-            "Multi-Layer"
+            "Other"
         };
 
         let net_tag = if net_id > 0 {
-            format!(" • Net: {}", net_name)
+            format!(" | Net: {}", net_name)
         } else {
             String::new()
         };
@@ -216,39 +216,38 @@ impl ParsedBoard {
             0 => {
                 let len = ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt();
                 (
-                    "Track Capsule",
+                    "Track",
                     format!(
-                        "Track [{}] w={:.2}mm len={:.2}mm{} (Click to probe net)",
-                        layer_name,
-                        r1 * 2.0,
-                        len,
-                        net_tag
+                        "Track [{}] W={:.3}mm L={:.3}mm{}",
+                        layer_name, w, len, net_tag
                     ),
                 )
             }
             1 => (
-                "Plated Via",
+                "Via / PTH",
                 format!(
-                    "Via [{}] Ø{:.2}mm / drill Ø{:.2}mm{} (Click to probe net)",
-                    layer_name,
-                    r1 * 2.0,
-                    r2 * 2.0,
-                    net_tag
+                    "Via/PTH [{}] Ø{:.2}mm / Drill Ø{:.2}mm{}",
+                    layer_name, w, h, net_tag
                 ),
             ),
-            2 => (
-                "SMD/THT Pad",
+            2 | 3 => (
+                "SMD Pad",
+                format!("Pad [{}] {:.2}×{:.2}mm{}", layer_name, w, h, net_tag),
+            ),
+            4 => (
+                "Rect PTH Pad",
                 format!(
-                    "Pad [{}] {:.2}×{:.2}mm{} (Click to probe net)",
-                    layer_name,
-                    r1 * 2.0,
-                    r2 * 2.0,
-                    net_tag
+                    "Pad [{}] {:.2}×{:.2}mm / Drill Ø{:.2}mm{}",
+                    layer_name, w, w, h, net_tag
                 ),
+            ),
+            8 => (
+                "Circle",
+                format!("Circle [{}] Ø{:.2}mm", layer_name, (w + h) * 0.5),
             ),
             _ => (
                 "Marker",
-                format!("Marker @ ({:.1}, {:.1})", x0, y0),
+                format!("Marker @ ({:.2}, {:.2}) mm", x0, y0),
             ),
         };
 
@@ -371,6 +370,10 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
             || is_token_start(line, "(fp_line")
             || is_token_start(line, "(gr_rect")
             || is_token_start(line, "(fp_rect")
+            || is_token_start(line, "(gr_circle")
+            || is_token_start(line, "(fp_circle")
+            || is_token_start(line, "(gr_arc")
+            || is_token_start(line, "(fp_arc")
             || (in_footprint && is_token_start(line, "(pad"))
         {
             if line_delta <= 0 {
@@ -718,12 +721,89 @@ fn process_primitive_block(
                 push_raw(instances, primitive_count, x1, y2, x1, y1, width, width, layer_mask as f32, 0.0);
             }
         }
+    } else if is_token_start(block, "(gr_circle") || is_token_start(block, "(fp_circle") {
+        if let (Some((lcx, lcy)), Some((lex, ley))) = (
+            extract_pair(block, "(center "),
+            extract_pair(block, "(end "),
+        ) {
+            let width = extract_single(block, "(width ").unwrap_or(0.15);
+            let layer_mask = extract_layer_mask(block);
+            if layer_mask != 0 {
+                let (cx, cy, ex, ey) = if is_token_start(block, "(fp_circle") && in_footprint {
+                    let (tcx, tcy) = transform_point(lcx, lcy, fp_x, fp_y, fp_rot_rad);
+                    let (tex, tey) = transform_point(lex, ley, fp_x, fp_y, fp_rot_rad);
+                    (tcx, tcy, tex, tey)
+                } else {
+                    (lcx, lcy, lex, ley)
+                };
+                let radius = ((ex - cx).powi(2) + (ey - cy).powi(2)).sqrt();
+                update_bounds(cx - radius, cy - radius);
+                update_bounds(cx + radius, cy + radius);
+                let outer_d = radius * 2.0 + width;
+                let inner_d = (radius * 2.0 - width).max(0.0);
+                push_raw(
+                    instances,
+                    primitive_count,
+                    cx,
+                    cy,
+                    cx,
+                    cy,
+                    outer_d,
+                    inner_d,
+                    layer_mask as f32,
+                    8.0,
+                );
+            }
+        }
+    } else if is_token_start(block, "(gr_arc") || is_token_start(block, "(fp_arc") {
+        if let (Some((lsx, lsy)), Some((lmx, lmy)), Some((lex, ley))) = (
+            extract_pair(block, "(start "),
+            extract_pair(block, "(mid "),
+            extract_pair(block, "(end "),
+        ) {
+            let width = extract_single(block, "(width ").unwrap_or(0.15);
+            let layer_mask = extract_layer_mask(block);
+            if layer_mask != 0 {
+                let (sx, sy, mx, my, ex, ey) =
+                    if is_token_start(block, "(fp_arc") && in_footprint {
+                        let (tsx, tsy) = transform_point(lsx, lsy, fp_x, fp_y, fp_rot_rad);
+                        let (tmx, tmy) = transform_point(lmx, lmy, fp_x, fp_y, fp_rot_rad);
+                        let (tex, tey) = transform_point(lex, ley, fp_x, fp_y, fp_rot_rad);
+                        (tsx, tsy, tmx, tmy, tex, tey)
+                    } else {
+                        (lsx, lsy, lmx, lmy, lex, ley)
+                    };
+                update_bounds(sx, sy);
+                update_bounds(mx, my);
+                update_bounds(ex, ey);
+                emit_arc_segments(
+                    instances,
+                    primitive_count,
+                    sx,
+                    sy,
+                    mx,
+                    my,
+                    ex,
+                    ey,
+                    width,
+                    layer_mask as f32,
+                );
+            }
+        }
     } else if is_token_start(block, "(pad") && in_footprint {
-        if let (Some((px, py, _prot)), Some((pw, ph))) = (
+        if let (Some((px, py, prot_deg)), Some((raw_pw, raw_ph))) = (
             parse_at_triple(block),
             extract_pair(block, "(size "),
         ) {
             let (wx, wy) = transform_point(px, py, fp_x, fp_y, fp_rot_rad);
+            let pad_rot_rad = prot_deg.to_radians();
+            let (pw, ph) = if pad_rot_rad.sin().abs() > 0.707 {
+                (raw_ph, raw_pw)
+            } else {
+                (raw_pw, raw_ph)
+            };
+            let drill = extract_single(block, "(drill ").unwrap_or(0.0);
+            let is_circle_or_oval = block.contains(" circle ") || block.contains(" oval ");
             let layer_mask = extract_layer_mask(block);
             let (net_id, net_name_opt) = extract_net_def(block).unwrap_or((0, None));
             if layer_mask != 0 {
@@ -740,7 +820,18 @@ fn process_primitive_block(
                         }
                     }
                 }
-                let encoded = (net_id as f32) * 16.0 + 2.0;
+                let (out_w, out_h, pad_prim) = if drill > 0.01 {
+                    if is_circle_or_oval {
+                        (pw.max(ph), drill, 1.0) // Circular/Oval Plated Through-Hole Pad
+                    } else {
+                        (pw.max(ph), drill, 4.0) // Square/Rect Plated Through-Hole Pad (Pin 1)
+                    }
+                } else if is_circle_or_oval {
+                    (pw, ph, 3.0) // Circular/Oval SMD Pad
+                } else {
+                    (pw, ph, 2.0) // Rectangular/Roundrect SMD Pad
+                };
+                let encoded = (net_id as f32) * 16.0 + pad_prim;
                 push_raw(
                     instances,
                     primitive_count,
@@ -748,13 +839,78 @@ fn process_primitive_block(
                     wy,
                     wx,
                     wy,
-                    pw,
-                    ph,
+                    out_w,
+                    out_h,
                     layer_mask as f32,
                     encoded,
                 );
             }
         }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_arc_segments(
+    instances: &mut Vec<f32>,
+    primitive_count: &mut usize,
+    sx: f32,
+    sy: f32,
+    mx: f32,
+    my: f32,
+    ex: f32,
+    ey: f32,
+    width: f32,
+    layer_mask: f32,
+) {
+    // Compute circumcenter of 3 points (sx,sy), (mx,my), (ex,ey)
+    let d = 2.0 * (sx * (my - ey) + mx * (ey - sy) + ex * (sy - my));
+    if d.abs() < 1e-4 {
+        push_raw(instances, primitive_count, sx, sy, mx, my, width, width, layer_mask, 0.0);
+        push_raw(instances, primitive_count, mx, my, ex, ey, width, width, layer_mask, 0.0);
+        return;
+    }
+    let s2 = sx * sx + sy * sy;
+    let m2 = mx * mx + my * my;
+    let e2 = ex * ex + ey * ey;
+    let cx = (s2 * (my - ey) + m2 * (ey - sy) + e2 * (sy - my)) / d;
+    let cy = (s2 * (ex - mx) + m2 * (sx - ex) + e2 * (mx - sx)) / d;
+    let r = ((sx - cx).powi(2) + (sy - cy).powi(2)).sqrt();
+
+    let a_start = (sy - cy).atan2(sx - cx);
+    let a_mid = (my - cy).atan2(mx - cx);
+    let a_end = (ey - cy).atan2(ex - cx);
+
+    let tau = std::f32::consts::TAU;
+    let ccw_mid = (a_mid - a_start).rem_euclid(tau);
+    let ccw_end = (a_end - a_start).rem_euclid(tau);
+    let sweep = if ccw_mid <= ccw_end {
+        ccw_end
+    } else {
+        ccw_end - tau
+    };
+
+    let steps = 8;
+    let mut prev_x = sx;
+    let mut prev_y = sy;
+    for i in 1..=steps {
+        let t = (i as f32) / (steps as f32);
+        let ang = a_start + sweep * t;
+        let nx = cx + r * ang.cos();
+        let ny = cy + r * ang.sin();
+        push_raw(
+            instances,
+            primitive_count,
+            prev_x,
+            prev_y,
+            nx,
+            ny,
+            width,
+            width,
+            layer_mask,
+            0.0,
+        );
+        prev_x = nx;
+        prev_y = ny;
     }
 }
 
@@ -908,7 +1064,7 @@ mod tests {
         let hit = board
             .query_nearest(105.0, 80.05, LAYER_F_CU, 1.5)
             .expect("Should hit F.Cu track");
-        assert_eq!(hit.kind, "Track Capsule");
+        assert_eq!(hit.kind, "Track");
         assert_eq!(hit.net_id, 11);
         assert_eq!(hit.net_name, "GND");
     }

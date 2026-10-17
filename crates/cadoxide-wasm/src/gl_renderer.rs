@@ -4,6 +4,93 @@ use web_sys::{
     WebGlVertexArrayObject,
 };
 
+const BG_VS_SRC: &str = r#"#version 300 es
+precision highp float;
+
+out vec2 v_ndc;
+
+void main() {
+  vec2 quad[6] = vec2[6](
+    vec2(-1.0, -1.0),
+    vec2( 1.0, -1.0),
+    vec2(-1.0,  1.0),
+    vec2(-1.0,  1.0),
+    vec2( 1.0, -1.0),
+    vec2( 1.0,  1.0)
+  );
+  v_ndc = quad[gl_VertexID];
+  gl_Position = vec4(v_ndc, 0.0, 1.0);
+}
+"#;
+
+const BG_FS_SRC: &str = r#"#version 300 es
+precision highp float;
+
+uniform vec4 u_center_and_scale;        // x: centerX_mm, y: centerY_mm, z: scale_px_per_mm
+uniform vec4 u_viewport_and_opacities;  // x: width_px, y: height_px
+uniform vec4 u_board_bounds;            // x: min_x, y: min_y, z: max_x, w: max_y
+uniform vec4 u_3d_and_hover;            // x: mode_3d
+
+in vec2 v_ndc;
+out vec4 outColor;
+
+void main() {
+  vec3 bg = vec3(0.038, 0.045, 0.062); // Deep EDA charcoal (#0a0b10)
+
+  float scale = u_center_and_scale.z;
+  vec2 screen_px = vec2(
+    v_ndc.x * (u_viewport_and_opacities.x * 0.5),
+    -v_ndc.y * (u_viewport_and_opacities.y * 0.5)
+  );
+  vec2 world_mm = u_center_and_scale.xy + screen_px / scale;
+
+  // In 2D Ortho mode, render subtle FR4 substrate fill inside board bounds & adaptive metric grid
+  if (u_3d_and_hover.x < 0.05) {
+    vec2 bmin = u_board_bounds.xy + vec2(2.0);
+    vec2 bmax = u_board_bounds.zw - vec2(2.0);
+    if (world_mm.x >= bmin.x && world_mm.x <= bmax.x &&
+        world_mm.y >= bmin.y && world_mm.y <= bmax.y) {
+      bg = vec3(0.052, 0.072, 0.064); // Subtle dark FR4 core tint
+    }
+
+    // Major 10.0 mm (1 cm) engineering grid lines
+    vec2 d10 = abs(fract(world_mm / 10.0 + 0.5) - 0.5) * 10.0 * scale;
+    float line10 = min(d10.x, d10.y);
+    if (line10 < 0.85) {
+      bg = mix(bg, vec3(0.14, 0.17, 0.22), 0.55);
+    }
+
+    // 1.0 mm minor grid dots (visible when zoomed past 4 px/mm)
+    if (scale > 4.0) {
+      vec2 d1 = abs(fract(world_mm + 0.5) - 0.5) * scale;
+      float dot1 = length(d1);
+      if (dot1 < 1.15) {
+        float fade = clamp((scale - 4.0) / 6.0, 0.0, 1.0);
+        bg = mix(bg, vec3(0.24, 0.29, 0.36), 0.65 * fade);
+      }
+    }
+
+    // 0.25 mm fine pitch grid dots (visible when zoomed past 24 px/mm)
+    if (scale > 24.0) {
+      vec2 d025 = abs(fract(world_mm * 4.0 + 0.5) - 0.5) * (scale * 0.25);
+      float dot025 = length(d025);
+      if (dot025 < 0.95) {
+        float fade = clamp((scale - 24.0) / 16.0, 0.0, 1.0);
+        bg = mix(bg, vec3(0.20, 0.24, 0.30), 0.45 * fade);
+      }
+    }
+
+    // Auxiliary board origin crosshair at bottom-left of board bounds
+    vec2 orig_px = abs(world_mm - vec2(bmin.x, bmax.y)) * scale;
+    if ((orig_px.x < 0.8 && orig_px.y < 14.0) || (orig_px.y < 0.8 && orig_px.x < 14.0)) {
+      bg = vec3(0.45, 0.22, 0.22);
+    }
+  }
+
+  outColor = vec4(bg, 1.0);
+}
+"#;
+
 const VS_SRC: &str = r#"#version 300 es
 precision highp float;
 
@@ -14,7 +101,7 @@ uniform vec4 u_center_and_scale;        // x: centerX_mm, y: centerY_mm, z: scal
 uniform vec4 u_viewport_and_opacities;  // x: width_px, y: height_px, z: f_cu_alpha, w: b_cu_alpha
 uniform vec4 u_diff_params;             // x: is_diff_view (0=normal, 1=blend, 2=wipe), y: wipe_ratio (0..1), z: silk_alpha, w: mask_alpha
 uniform vec4 u_3d_and_hover;            // x: mode_3d (0=2D, >0=3D Z-explosion), y: yaw_rad, z: pitch_rad, w: hovered_instance_id (-1 = none)
-uniform int u_selected_net_id;          // 0 = no net selected, >0 = X-Ray highlight this electrical net across all layers
+uniform int u_selected_net_id;          // 0 = no net selected, >0 = highlight this electrical net across all layers
 
 out vec2 v_local_pos;
 out vec2 v_seg_len_and_r;
@@ -36,19 +123,34 @@ void main() {
 
   vec2 p1 = a_p1_p2.xy;
   vec2 p2 = a_p1_p2.zw;
-  float w = max(a_params.x, 0.08);
-  float h = max(a_params.y, 0.08);
+  float w = max(a_params.x, 0.06);
+  float h = max(a_params.y, 0.04);
 
   // Decode net_id and prim_type from packed a_params.w = net_id * 16.0 + prim_type
   int net_id = int(floor(a_params.w / 16.0 + 0.001));
   float prim_type = a_params.w - float(net_id) * 16.0;
   float scale = u_center_and_scale.z;
 
-  // OPTIMIZATION 1: Hardware Sub-Pixel LOD Culling in Vertex Stage
+  // OPTIMIZATION 1: Hardware Sub-Pixel LOD Culling in Vertex Stage (Instance-uniform)
   float max_dim_px = max(w, h) * scale;
-  if (prim_type < 2.2 && max_dim_px < 0.38 && length(p2 - p1) * scale < 0.55) {
+  float seg_span_mm = length(p2 - p1);
+  if (prim_type < 4.5 && max_dim_px < 0.35 && seg_span_mm * scale < 0.50) {
     gl_Position = vec4(-2.0, -2.0, 0.0, 1.0);
     return;
+  }
+
+  // OPTIMIZATION 2: Instance-Level Frustum Culling (100% uniform across all 6 vertices of an instance!)
+  if (u_3d_and_hover.x < 0.05) {
+    vec2 inst_mid_mm = 0.5 * (p1 + p2);
+    float inst_rad_mm = 0.5 * seg_span_mm + max(w, h);
+    vec2 mid_px = (inst_mid_mm - u_center_and_scale.xy) * scale;
+    vec2 rad_px = vec2(inst_rad_mm * scale);
+    vec2 half_vp = u_viewport_and_opacities.xy * 0.5;
+    if (abs(mid_px.x) - rad_px.x > half_vp.x * 1.15 ||
+        abs(mid_px.y) - rad_px.y > half_vp.y * 1.15) {
+      gl_Position = vec4(-2.0, -2.0, 0.0, 1.0);
+      return;
+    }
   }
 
   vec2 quad[6] = vec2[6](
@@ -64,6 +166,7 @@ void main() {
   vec2 world_mm;
   float seg_len = 0.0;
   if (prim_type < 0.5) {
+    // Capsule Track / Silkscreen Line / Edge.Cuts Line
     vec2 delta = p2 - p1;
     seg_len = length(delta);
     vec2 dir = seg_len > 0.0001 ? (delta / seg_len) : vec2(1.0, 0.0);
@@ -74,9 +177,18 @@ void main() {
     world_mm = p1 + dir * along + norm * perp;
     v_local_pos = vec2(along, perp);
     v_seg_len_and_r = vec2(seg_len, r);
-  } else {
+  } else if (prim_type > 1.5 && prim_type < 3.5) {
+    // SMD Pad (2.0 = Rect/Roundrect, 3.0 = Circle/Oval): w = width, h = height
     float rx = w * 0.5;
-    float ry = prim_type > 1.5 ? (h * 0.5) : (w * 0.5);
+    float ry = h * 0.5;
+    world_mm = p1 + vec2(uv.x * rx, uv.y * ry);
+    v_local_pos = vec2(uv.x * rx, uv.y * ry);
+    v_seg_len_and_r = vec2(rx, ry);
+  } else {
+    // Vias (1.0), Rect PTH Pads (4.0), Markers (5.0..7.0), Circles (8.0):
+    // w = outer diameter/size, h = inner drill/ring diameter
+    float rx = w * 0.5;
+    float ry = w * 0.5;
     world_mm = p1 + vec2(uv.x * rx, uv.y * ry);
     v_local_pos = vec2(uv.x * rx, uv.y * ry);
     v_seg_len_and_r = vec2(rx, ry);
@@ -89,50 +201,62 @@ void main() {
   if (u_diff_params.x > 0.5) {
     if ((layer_mask & 2048u) != 0u) {
       v_diff_flags = 2.0; // Added in Rev B
-      v_color = vec4(0.13, 0.77, 0.37, 0.95); // Green (#22c55e)
+      v_color = vec4(0.18, 0.80, 0.44, 0.94); // Added Green
     } else if ((layer_mask & 1024u) != 0u) {
       v_diff_flags = 1.0; // Removed from Rev A
-      v_color = vec4(0.94, 0.27, 0.27, 0.95); // Red (#ef4444)
+      v_color = vec4(0.91, 0.25, 0.25, 0.94); // Removed Red
     } else {
       v_diff_flags = 0.0; // Unchanged
-      v_color = vec4(0.29, 0.33, 0.41, 0.65); // Muted Slate (#4A5568)
+      v_color = vec4(0.28, 0.32, 0.38, 0.52); // Muted Reference Slate
     }
   } else {
     v_diff_flags = 0.0;
     if ((layer_mask & 256u) != 0u) {
-      v_color = prim_type > 2.5 ? vec4(0.06, 0.73, 0.51, 1.0) : vec4(0.88, 0.11, 0.28, 1.0);
+      // Review Annotation Marker
+      v_color = prim_type > 6.5 ? vec4(0.16, 0.74, 0.48, 0.96) : vec4(0.92, 0.22, 0.30, 0.96);
     } else if ((layer_mask & 128u) != 0u) {
-      v_color = vec4(0.96, 0.62, 0.04, 0.95);
+      // DRC Violation Ring
+      v_color = vec4(0.96, 0.62, 0.08, 0.96);
     } else if ((layer_mask & 4u) != 0u) {
-      v_color = vec4(0.97, 0.98, 0.99, 0.95); // Edge.Cuts
-    } else if (prim_type > 0.5 && prim_type < 1.5) {
-      v_color = vec4(0.92, 0.78, 0.35, 0.95); // Via gold ring
+      // KiCad Edge.Cuts Yellow-Gold
+      v_color = vec4(0.88, 0.76, 0.22, 0.98);
+    } else if ((prim_type > 0.5 && prim_type < 1.5) || (prim_type > 3.5 && prim_type < 4.5)) {
+      // Plated Through-Hole Via / PTH Pad (ENIG Gold/Brass Annular Ring)
+      v_color = vec4(0.82, 0.68, 0.30, 0.96);
+    } else if ((layer_mask & 8u) != 0u && (active_mask & 8u) != 0u && prim_type < 1.5) {
+      // Top Silkscreen (F.SilkS)
+      v_color = vec4(0.84, 0.89, 0.91, u_diff_params.z);
+    } else if ((layer_mask & 8u) != 0u && prim_type > 7.5) {
+      // Silkscreen Circle
+      v_color = vec4(0.84, 0.89, 0.91, u_diff_params.z);
     } else if ((layer_mask & 1u) != 0u && (active_mask & 1u) != 0u) {
-      v_color = vec4(0.96, 0.62, 0.04, u_viewport_and_opacities.z); // F.Cu
+      // KiCad F.Cu (Front Copper Red)
+      v_color = vec4(0.78, 0.20, 0.20, u_viewport_and_opacities.z);
     } else if ((layer_mask & 4096u) != 0u && (active_mask & 4096u) != 0u) {
-      v_color = vec4(0.66, 0.33, 0.97, 0.85); // In1.Cu..In4.Cu (Inner Copper)
+      // KiCad In1..In4.Cu (Inner Copper Ochre-Green)
+      v_color = vec4(0.75, 0.56, 0.16, 0.86);
     } else if ((layer_mask & 2u) != 0u && (active_mask & 2u) != 0u) {
-      v_color = vec4(0.23, 0.51, 0.96, u_viewport_and_opacities.w); // B.Cu
+      // KiCad B.Cu (Bottom Copper Blue)
+      v_color = vec4(0.20, 0.44, 0.76, u_viewport_and_opacities.w);
     } else if ((layer_mask & 8u) != 0u || (layer_mask & 16u) != 0u) {
-      v_color = vec4(0.94, 0.96, 0.98, u_diff_params.z); // SilkS
+      v_color = vec4(0.84, 0.89, 0.91, u_diff_params.z);
     } else {
-      v_color = vec4(0.04, 0.59, 0.41, u_diff_params.w); // Mask
+      v_color = vec4(0.11, 0.54, 0.38, u_diff_params.w);
     }
 
-    // GPU Netlist X-Ray Highlighting
+    // GPU Netlist Highlighting
     if (u_selected_net_id > 0) {
       if (net_id == u_selected_net_id) {
         v_is_hovered = 2.0; // Highlight entire connected net
       } else if ((layer_mask & 388u) == 0u) {
-        // Dim unrelated copper/silk/mask while keeping board Edge.Cuts & review pins readable
-        v_color = vec4(v_color.rgb * 0.35, v_color.a * 0.16);
+        v_color = vec4(v_color.rgb * 0.30, v_color.a * 0.15);
       }
     }
   }
 
   vec2 rel = world_mm - u_center_and_scale.xy;
 
-  // OPTIMIZATION 2: Hardware 3D Multi-Layer Stackup Isometric/Orbit Projection
+  // OPTIMIZATION 3: Hardware 3D Multi-Layer Stackup Isometric/Orbit Projection
   if (u_3d_and_hover.x > 0.05) {
     float z_layer = 0.0;
     if ((layer_mask & 256u) != 0u || (layer_mask & 128u) != 0u) {
@@ -161,7 +285,6 @@ void main() {
     float cp = cos(u_3d_and_hover.z);
     float sp = sin(u_3d_and_hover.z);
 
-    // Rotate around Z (yaw) then tilt around X (pitch)
     float rx = rel.x * cy - rel.y * sy;
     float ry = rel.x * sy + rel.y * cy;
     float proj_y = ry * cp - z_layer * sp;
@@ -173,12 +296,6 @@ void main() {
     screen_px.x / (u_viewport_and_opacities.x * 0.5),
     -screen_px.y / (u_viewport_and_opacities.y * 0.5)
   );
-
-  // OPTIMIZATION 3: Vertex-Stage Frustum Culling for compact off-screen instances
-  if (seg_len < 15.0 && (abs(ndc.x) > 1.35 || abs(ndc.y) > 1.35)) {
-    gl_Position = vec4(-2.0, -2.0, 0.0, 1.0);
-    return;
-  }
 
   v_screen_x_ratio = ndc.x * 0.5 + 0.5;
   gl_Position = vec4(ndc, 0.0, 1.0);
@@ -200,19 +317,23 @@ in float v_is_hovered;
 
 out vec4 outColor;
 
+float sdRoundedBox(vec2 p, vec2 b, float r) {
+  vec2 q = abs(p) - b + r;
+  return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+
 void main() {
-  // Split-Wipe Mode (u_diff_params.x == 2.0):
   if (u_diff_params.x > 1.5) {
     float wipe = u_diff_params.y;
     if (v_screen_x_ratio < wipe) {
-      if (v_diff_flags > 1.5) discard; // Hide Rev B-only on left side
-      outColor = vec4(0.96, 0.45, 0.15, 0.92); // Rev A Copper
+      if (v_diff_flags > 1.5) discard;
+      outColor = vec4(0.78, 0.20, 0.20, 0.92);
     } else {
-      if (v_diff_flags > 0.5 && v_diff_flags < 1.5) discard; // Hide Rev A-only on right side
-      outColor = vec4(0.13, 0.77, 0.55, 0.92); // Rev B Copper
+      if (v_diff_flags > 0.5 && v_diff_flags < 1.5) discard;
+      outColor = vec4(0.16, 0.74, 0.48, 0.92);
     }
-    if (abs(v_screen_x_ratio - wipe) < 0.002) {
-      outColor = vec4(0.13, 0.83, 0.93, 1.0); // Cyan Split Line
+    if (abs(v_screen_x_ratio - wipe) < 0.0015) {
+      outColor = vec4(0.22, 0.78, 0.95, 1.0);
       return;
     }
   } else {
@@ -220,27 +341,74 @@ void main() {
   }
 
   float prim_type = v_drill_and_type.y;
+  float drill_r = v_drill_and_type.x;
+
   if (prim_type < 0.5) {
+    // 0.0: Capsule Track / Silkscreen Line
     float clamped_x = clamp(v_local_pos.x, 0.0, v_seg_len_and_r.x);
     float dist = length(vec2(v_local_pos.x - clamped_x, v_local_pos.y));
     if (dist > v_seg_len_and_r.y) discard;
   } else if (prim_type < 1.5) {
+    // 1.0: Plated Via or Circular/Oval PTH Pad with Dark Plated Drill Hole
     float dist = length(v_local_pos);
-    if (dist > v_seg_len_and_r.x || dist < v_drill_and_type.x) discard;
-  } else if (prim_type > 2.2) {
-    // Circular Pin / DRC Marker with white border ring
-    float dist = length(v_local_pos);
-    if (dist > v_seg_len_and_r.x) discard;
-    if (dist > v_seg_len_and_r.x * 0.72) {
-      outColor = vec4(1.0, 1.0, 1.0, 1.0);
+    float outer_r = v_seg_len_and_r.x;
+    if (dist > outer_r) discard;
+    if (dist < drill_r * 0.86) {
+      outColor = vec4(0.038, 0.045, 0.062, 1.0); // Plated drill hole center
+      return;
+    } else if (dist < drill_r * 1.06) {
+      outColor = vec4(0.55, 0.44, 0.18, 1.0); // Inner hole barrel rim
     }
+  } else if (prim_type < 2.5) {
+    // 2.0: Rounded-Rectangle SMD Pad
+    vec2 half_ext = v_seg_len_and_r;
+    float corner_r = min(half_ext.x, half_ext.y) * 0.22;
+    float d = sdRoundedBox(v_local_pos, half_ext, corner_r);
+    if (d > 0.0) discard;
+  } else if (prim_type < 3.5) {
+    // 3.0: Circular / Oval SMD Pad
+    vec2 norm_p = v_local_pos / max(v_seg_len_and_r, vec2(0.01));
+    if (length(norm_p) > 1.0) discard;
+  } else if (prim_type < 4.5) {
+    // 4.0: Square / Rectangular Plated Through-Hole Pad (Pin 1) with Circular Drill Hole
+    vec2 half_ext = v_seg_len_and_r;
+    float corner_r = min(half_ext.x, half_ext.y) * 0.14;
+    float d = sdRoundedBox(v_local_pos, half_ext, corner_r);
+    if (d > 0.0) discard;
+    float dist = length(v_local_pos);
+    if (dist < drill_r * 0.86) {
+      outColor = vec4(0.038, 0.045, 0.062, 1.0); // Plated drill hole center
+      return;
+    } else if (dist < drill_r * 1.06) {
+      outColor = vec4(0.55, 0.44, 0.18, 1.0); // Inner hole barrel rim
+    }
+  } else if (prim_type < 7.5) {
+    // 5.0..7.0: DRC Marker Ring / Review Annotation Target
+    float dist = length(v_local_pos);
+    float outer_r = v_seg_len_and_r.x;
+    if (dist > outer_r) discard;
+    if (prim_type < 5.5) {
+      // DRC Ring
+      if (dist < outer_r * 0.55) discard;
+    } else {
+      // Review Target Marker
+      if (dist > outer_r * 0.76) {
+        outColor = vec4(0.95, 0.97, 1.0, 1.0);
+      }
+    }
+  } else {
+    // 8.0: SDF Circle Outline (fp_circle / gr_circle)
+    float dist = length(v_local_pos);
+    float outer_r = v_seg_len_and_r.x;
+    float inner_r = drill_r;
+    if (dist > outer_r || dist < inner_r) discard;
   }
 
-  // Real-time GPU Net X-Ray (v_is_hovered > 1.5) or Cursor Hover (v_is_hovered > 0.5)
+  // Real-time GPU Net Highlighting (v_is_hovered > 1.5) or Cursor Hover (v_is_hovered > 0.5)
   if (v_is_hovered > 1.5) {
-    outColor = vec4(mix(outColor.rgb, vec3(0.08, 1.0, 0.78), 0.84), 1.0);
+    outColor = vec4(mix(outColor.rgb, vec3(0.20, 0.98, 0.72), 0.82), 1.0);
   } else if (v_is_hovered > 0.5) {
-    outColor = vec4(mix(outColor.rgb, vec3(0.15, 0.96, 1.0), 0.78), 1.0);
+    outColor = vec4(mix(outColor.rgb, vec3(0.35, 0.92, 1.0), 0.75), 1.0);
   }
 }
 "#;
@@ -248,6 +416,7 @@ void main() {
 pub struct RustGpuRenderer {
     canvas: HtmlCanvasElement,
     gl: GL,
+    bg_program: WebGlProgram,
     program: WebGlProgram,
     vao: WebGlVertexArrayObject,
     instance_buf: WebGlBuffer,
@@ -275,6 +444,10 @@ impl RustGpuRenderer {
             .dyn_into::<GL>()
             .map_err(|_| "Failed to cast to WebGl2RenderingContext")?;
 
+        let bg_vs = compile_shader(&gl, GL::VERTEX_SHADER, BG_VS_SRC)?;
+        let bg_fs = compile_shader(&gl, GL::FRAGMENT_SHADER, BG_FS_SRC)?;
+        let bg_program = link_program(&gl, &bg_vs, &bg_fs)?;
+
         let vs = compile_shader(&gl, GL::VERTEX_SHADER, VS_SRC)?;
         let fs = compile_shader(&gl, GL::FRAGMENT_SHADER, FS_SRC)?;
         let program = link_program(&gl, &vs, &fs)?;
@@ -300,6 +473,7 @@ impl RustGpuRenderer {
         Ok(Self {
             canvas,
             gl,
+            bg_program,
             program,
             vao,
             instance_buf,
@@ -308,7 +482,7 @@ impl RustGpuRenderer {
             scale_px_per_mm: 8.0,
             bounds: [70.0, 40.0, 190.0, 150.0],
             active_layer_mask: 4607,
-            opacities: [0.92, 0.75, 0.85, 0.45],
+            opacities: [0.92, 0.78, 0.88, 0.45],
             diff_mode: 0.0,
             wipe_ratio: 0.5,
             mode_3d_explode: 0.0,
@@ -352,7 +526,7 @@ impl RustGpuRenderer {
         let h_mm = (max_y - min_y).max(10.0);
         let cw = self.canvas.width() as f32;
         let ch = self.canvas.height() as f32;
-        self.scale_px_per_mm = ((cw * 0.82) / w_mm).min((ch * 0.82) / h_mm).max(2.0);
+        self.scale_px_per_mm = ((cw * 0.84) / w_mm).min((ch * 0.84) / h_mm).max(2.0);
     }
 
     pub fn screen_to_board_mm(&self, client_x: f64, client_y: f64) -> (f32, f32) {
@@ -395,65 +569,113 @@ impl RustGpuRenderer {
         let h = self.canvas.height() as i32;
 
         self.gl.viewport(0, 0, w, h);
-        self.gl.clear_color(0.012, 0.024, 0.055, 1.0);
+        self.gl.clear_color(0.038, 0.045, 0.062, 1.0);
         self.gl.clear(GL::COLOR_BUFFER_BIT);
 
+        self.gl.bind_vertex_array(Some(&self.vao));
+
+        // 1. Render CAD Metric Grid & FR4 Board Substrate Pass
+        self.gl.disable(GL::BLEND);
+        self.gl.use_program(Some(&self.bg_program));
+        if let Some(u1) = self.gl.get_uniform_location(&self.bg_program, "u_center_and_scale") {
+            self.gl.uniform4f(
+                Some(&u1),
+                self.center_mm.0,
+                self.center_mm.1,
+                self.scale_px_per_mm,
+                self.active_layer_mask as f32,
+            );
+        }
+        if let Some(u2) = self
+            .gl
+            .get_uniform_location(&self.bg_program, "u_viewport_and_opacities")
+        {
+            self.gl
+                .uniform4f(Some(&u2), w as f32, h as f32, 1.0, 1.0);
+        }
+        if let Some(ub) = self.gl.get_uniform_location(&self.bg_program, "u_board_bounds") {
+            self.gl.uniform4f(
+                Some(&ub),
+                self.bounds[0],
+                self.bounds[1],
+                self.bounds[2],
+                self.bounds[3],
+            );
+        }
+        if let Some(u4) = self.gl.get_uniform_location(&self.bg_program, "u_3d_and_hover") {
+            self.gl.uniform4f(
+                Some(&u4),
+                self.mode_3d_explode,
+                self.yaw_rad,
+                self.pitch_rad,
+                self.hovered_instance_id as f32,
+            );
+        }
+        self.gl.draw_arrays(GL::TRIANGLES, 0, 6);
+
         if self.instance_count <= 0 {
+            self.gl.bind_vertex_array(None);
             return;
         }
 
+        // 2. Render Instanced SDF PCB Primitives Pass
         self.gl.enable(GL::BLEND);
         self.gl.blend_func(GL::SRC_ALPHA, GL::ONE_MINUS_SRC_ALPHA);
         self.gl.use_program(Some(&self.program));
 
-        let u1 = self
+        if let Some(u1) = self
             .gl
-            .get_uniform_location(&self.program, "u_center_and_scale");
-        self.gl.uniform4f(
-            u1.as_ref(),
-            self.center_mm.0,
-            self.center_mm.1,
-            self.scale_px_per_mm,
-            self.active_layer_mask as f32,
-        );
+            .get_uniform_location(&self.program, "u_center_and_scale")
+        {
+            self.gl.uniform4f(
+                Some(&u1),
+                self.center_mm.0,
+                self.center_mm.1,
+                self.scale_px_per_mm,
+                self.active_layer_mask as f32,
+            );
+        }
 
-        let u2 = self
+        if let Some(u2) = self
             .gl
-            .get_uniform_location(&self.program, "u_viewport_and_opacities");
-        self.gl.uniform4f(
-            u2.as_ref(),
-            w as f32,
-            h as f32,
-            self.opacities[0],
-            self.opacities[1],
-        );
+            .get_uniform_location(&self.program, "u_viewport_and_opacities")
+        {
+            self.gl.uniform4f(
+                Some(&u2),
+                w as f32,
+                h as f32,
+                self.opacities[0],
+                self.opacities[1],
+            );
+        }
 
-        let u3 = self.gl.get_uniform_location(&self.program, "u_diff_params");
-        self.gl.uniform4f(
-            u3.as_ref(),
-            self.diff_mode,
-            self.wipe_ratio,
-            self.opacities[2],
-            self.opacities[3],
-        );
+        if let Some(u3) = self.gl.get_uniform_location(&self.program, "u_diff_params") {
+            self.gl.uniform4f(
+                Some(&u3),
+                self.diff_mode,
+                self.wipe_ratio,
+                self.opacities[2],
+                self.opacities[3],
+            );
+        }
 
-        let u4 = self
+        if let Some(u4) = self.gl.get_uniform_location(&self.program, "u_3d_and_hover") {
+            self.gl.uniform4f(
+                Some(&u4),
+                self.mode_3d_explode,
+                self.yaw_rad,
+                self.pitch_rad,
+                self.hovered_instance_id as f32,
+            );
+        }
+
+        if let Some(u5) = self
             .gl
-            .get_uniform_location(&self.program, "u_3d_and_hover");
-        self.gl.uniform4f(
-            u4.as_ref(),
-            self.mode_3d_explode,
-            self.yaw_rad,
-            self.pitch_rad,
-            self.hovered_instance_id as f32,
-        );
+            .get_uniform_location(&self.program, "u_selected_net_id")
+        {
+            self.gl.uniform1i(Some(&u5), self.selected_net_id);
+        }
 
-        let u5 = self
-            .gl
-            .get_uniform_location(&self.program, "u_selected_net_id");
-        self.gl.uniform1i(u5.as_ref(), self.selected_net_id);
-
-        self.gl.bind_vertex_array(Some(&self.vao));
         self.gl
             .draw_arrays_instanced(GL::TRIANGLES, 0, 6, self.instance_count);
         self.gl.bind_vertex_array(None);
@@ -480,7 +702,7 @@ fn compile_shader(gl: &GL, shader_type: u32, src: &str) -> Result<WebGlShader, S
 }
 
 fn link_program(gl: &GL, vs: &WebGlShader, fs: &WebGlShader) -> Result<WebGlProgram, String> {
-    let program = gl.create_program().ok_or("Unable to create program")?;
+    let program = gl.create_program().ok_or("Unable to create GL program")?;
     gl.attach_shader(&program, vs);
     gl.attach_shader(&program, fs);
     gl.link_program(&program);
@@ -493,6 +715,6 @@ fn link_program(gl: &GL, vs: &WebGlShader, fs: &WebGlShader) -> Result<WebGlProg
     } else {
         Err(gl
             .get_program_info_log(&program)
-            .unwrap_or_else(|| "Unknown link error".into()))
+            .unwrap_or_else(|| "Unknown program link error".into()))
     }
 }

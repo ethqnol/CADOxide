@@ -110,10 +110,13 @@ impl AppController {
                 let delay_ps = stats.total_length_mm * 6.67;
                 if let Some(info_el) = self.doc.get_element_by_id("net-probe-info") {
                     info_el.set_inner_html(&format!(
-                        "<span class='text-emerald-300 font-bold'>⚡ NET #{}: {}</span> &bull; \
-                         <span class='text-white font-semibold'>Length: {:.2} mm ({:.0} mils)</span> &bull; \
-                         <span class='text-cyan-300'>Flight Delay: {:.1} ps</span> &bull; \
-                         <span class='text-slate-300'>{} traces / {} vias / {} pads</span>",
+                        "<span style='color:#34d399;font-weight:700;'>NET #{}: {}</span> \
+                         <span style='color:#4b5563;margin:0 6px;'>|</span> \
+                         <span style='color:#f3f4f6;'>Length: <b>{:.3} mm</b> ({:.1} mil)</span> \
+                         <span style='color:#4b5563;margin:0 6px;'>|</span> \
+                         <span style='color:#60a5fa;'>Td(FR4): {:.1} ps</span> \
+                         <span style='color:#4b5563;margin:0 6px;'>|</span> \
+                         <span style='color:#9ca3af;'>{} segs, {} vias, {} pads</span>",
                         nid,
                         name,
                         stats.total_length_mm,
@@ -140,8 +143,7 @@ impl AppController {
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
 
-            let mut html =
-                String::from(r#"<option value="0">🔬 Probe Net (Click trace or select)...</option>"#);
+            let mut html = String::from(r#"<option value="0">Net Filter: All Nets</option>"#);
             for n in net_list.iter().take(80) {
                 let label = if n.name.is_empty() {
                     format!("Net #{}", n.id)
@@ -149,7 +151,7 @@ impl AppController {
                     n.name.clone()
                 };
                 html.push_str(&format!(
-                    r#"<option value="{}">{} ({:.1} mm • {} vias)</option>"#,
+                    r#"<option value="{}">{} ({:.2} mm | {}v)</option>"#,
                     n.id, label, n.total_length_mm, n.via_count
                 ));
             }
@@ -168,7 +170,7 @@ impl AppController {
         let mut count = base.primitive_count;
 
         if self.active_tab != "diff" {
-            // Append DRC markers as GPU-instanced rings (layer bit LAYER_DRC_MARKER = 128)
+            // Append DRC markers as GPU-instanced rings (layer bit LAYER_DRC_MARKER = 128, prim_type = 5.0)
             for d in &self.drc_items {
                 if d.x > 1.0 && d.y > 1.0 {
                     push_raw(
@@ -178,17 +180,17 @@ impl AppController {
                         d.y,
                         d.x,
                         d.y,
-                        1.4,
+                        1.3,
                         0.5,
                         LAYER_DRC_MARKER as f32,
-                        2.5,
+                        5.0,
                     );
                 }
             }
 
-            // Append Review Thread Pins as GPU-instanced circles (layer bit LAYER_REVIEW_PIN = 256)
+            // Append Review Thread Pins as GPU-instanced targets (layer bit LAYER_REVIEW_PIN = 256, prim_type = 6.0 / 7.0)
             for t in &self.threads {
-                let ptype = if t.resolved { 3.0 } else { 2.4 };
+                let ptype = if t.resolved { 7.0 } else { 6.0 };
                 push_raw(
                     &mut combined,
                     &mut count,
@@ -196,8 +198,8 @@ impl AppController {
                     t.y,
                     t.x,
                     t.y,
-                    2.6,
-                    2.6,
+                    2.2,
+                    2.2,
                     LAYER_REVIEW_PIN as f32,
                     ptype,
                 );
@@ -219,13 +221,30 @@ impl AppController {
                 .as_ref()
                 .map(|r| r.instance_count)
                 .unwrap_or(0);
+            let scale = self
+                .renderer
+                .as_ref()
+                .map(|r| r.scale_px_per_mm)
+                .unwrap_or(8.0);
+            if let Some(zoom_el) = self.doc.get_element_by_id("rust-zoom-hud") {
+                let grid_step = if scale > 24.0 {
+                    "0.25 mm"
+                } else if scale > 4.0 {
+                    "1.00 mm"
+                } else {
+                    "10.0 mm"
+                };
+                zoom_el.set_text_content(Some(&format!(
+                    "Grid: {}   Scale: {:.1} px/mm",
+                    grid_step, scale
+                )));
+            }
             if self.active_tab == "diff" {
                 let (add, rem, unch) = self.diff_stats;
                 el.set_inner_html(&format!(
-                    "<span class='text-emerald-400 font-semibold'>+{} added</span> &bull; \
-                     <span class='text-rose-400 font-semibold'>-{} removed</span> &bull; \
-                     <span class='text-slate-400'>{} unchanged</span> &bull; \
-                     <span class='text-indigo-400'>1 GPU Draw Call ({} inst)</span>",
+                    "<span style='color:#34d399;'>+{}</span> / \
+                     <span style='color:#f87171;'>-{}</span> / \
+                     <span>{} unch</span> | {} prims",
                     add, rem, unch, prims
                 ));
             } else {
@@ -234,18 +253,16 @@ impl AppController {
                     .as_ref()
                     .map(|r| {
                         if r.mode_3d_explode > 0.05 {
-                            "3D Stackup Orbit"
+                            "3D Stackup"
                         } else {
-                            "2D Ortho + LOD Cull"
+                            "2D Ortho"
                         }
                     })
                     .unwrap_or("2D Ortho");
-                el.set_inner_html(&format!(
-                    "<span class='text-emerald-400 font-semibold'>{}</span> &bull; \
-                     <span class='text-slate-200'>{} GPU instances</span> &bull; \
-                     <span class='text-indigo-400'>Parse+Grid: {:.1}ms (1 draw call)</span>",
+                el.set_text_content(Some(&format!(
+                    "{} | {} primitives ({:.1} ms)",
                     mode_badge, prims, self.parse_time_ms
-                ));
+                )));
             }
         }
     }
@@ -436,236 +453,254 @@ pub fn start_cadoxide_app() {
 
 fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppController>>) {
     root.set_inner_html(
-        r#"
-        <div class="w-screen h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden select-none font-sans">
-          <!-- Top Pure-Rust Header Bar -->
-          <header class="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between shrink-0 z-30">
-            <div class="flex items-center space-x-3">
-              <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg">
-                RS
+        r##"
+        <div class="cad-shell">
+          <!-- Top Industrial EDA Menu & Document Bar -->
+          <header class="cad-menubar">
+            <div class="cad-menubar-group">
+              <div class="cad-brand">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <rect x="1" y="1" width="14" height="14" rx="1.5" stroke="#c83434" stroke-width="1.5"/>
+                  <circle cx="5" cy="5" r="1.5" fill="#d4b047"/>
+                  <circle cx="11" cy="11" r="1.5" fill="#d4b047"/>
+                  <path d="M5 5L8 8H11V11" stroke="#c83434" stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
+                <span>CADoxide</span>
               </div>
-              <div>
-                <div class="flex items-center space-x-2">
-                  <span class="font-bold text-slate-100 tracking-tight text-base">CADoxide</span>
-                  <span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold">
-                    100% Pure Rust + WASM GPU
-                  </span>
-                </div>
-              </div>
-              <div class="h-4 w-px bg-slate-800 mx-1"></div>
-              <select id="rust-project-select" class="bg-slate-950 border border-slate-700 text-xs text-slate-200 rounded-md px-2.5 py-1.5">
-                <option value="complex_hierarchy">Audio Amp (complex_hierarchy.kicad_pcb)</option>
-                <option value="cm5_minima">Raspberry Pi CM5 Minima (CM5_MINIMA_3.kicad_pcb)</option>
+              <div class="cad-divider-v"></div>
+              <select id="rust-project-select" class="cad-select" title="Active PCB Document">
+                <option value="complex_hierarchy">complex_hierarchy.kicad_pcb (2-Layer Analog/HV)</option>
+                <option value="cm5_minima">CM5_MINIMA_3.kicad_pcb (4-Layer RPi CM5 Carrier)</option>
               </select>
-            </div>
-
-            <!-- View Mode Tabs -->
-            <div class="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800 space-x-1">
-              <button id="tab-pcb" class="px-3 py-1 rounded text-xs font-medium bg-indigo-600 text-white">PCB Canvas (GPU SDF)</button>
-              <button id="tab-diff" class="px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-slate-200">Visual Diff (GPU Shader)</button>
-              <button id="tab-schematic" class="px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-slate-200">Schematic Sheet</button>
-              <button id="tab-drc" class="px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-slate-200">DRC Audit (<span id="drc-count-badge">69</span>)</button>
-              <button id="tab-parts" class="px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-slate-200">Parts &amp; BOM (8)</button>
-            </div>
-
-            <!-- Right Benchmark & Telemetry Controls -->
-            <div class="flex items-center space-x-2">
-              <button id="btn-100k-hdi" class="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-mono font-semibold cursor-pointer">
-                ⚡ 100k HDI Stress Test
+              <button id="btn-100k-hdi" class="cad-btn" title="Generate 100,000-primitive synthetic HDI test board">
+                HDI-100K Bench
               </button>
-              <div id="cluster-status-badge" class="px-2.5 py-1 rounded bg-slate-950 border border-slate-800 text-[11px] font-mono text-emerald-400">
-                KiCad 10.0.7 &bull; CAS Active
+            </div>
+
+            <!-- Center Workspace Mode Switcher -->
+            <div class="cad-tabs">
+              <button id="tab-pcb" class="cad-tab cad-tab-active">PCB Layout</button>
+              <button id="tab-diff" class="cad-tab">Layer Diff</button>
+              <button id="tab-schematic" class="cad-tab">Schematic</button>
+              <button id="tab-drc" class="cad-tab">DRC (<span id="drc-count-badge">69</span>)</button>
+              <button id="tab-parts" class="cad-tab">BOM (8)</button>
+            </div>
+
+            <!-- Right Engineering & Net Controls -->
+            <div class="cad-menubar-group">
+              <div id="diff-toolbar-controls" class="hidden cad-menubar-group">
+                <button id="btn-diff-boolean" class="cad-btn cad-btn-active">Overlay</button>
+                <button id="btn-diff-wipe" class="cad-btn">Split Wipe</button>
+                <input id="input-wipe-slider" type="range" min="0" max="100" value="50" style="width:90px;accent-color:#3b82f6;cursor:pointer;" />
+                <div class="cad-divider-v"></div>
+              </div>
+              <select id="rust-net-select" class="cad-select" style="width:195px;" title="Highlight electrical net across all layers">
+                <option value="0">Net Filter: All Nets</option>
+              </select>
+              <a id="link-3d-vrml" href="/samples/complex_hierarchy/board.wrl" download class="cad-btn" title="Export KiCad 3D VRML Model (.wrl)">
+                Export .WRL
+              </a>
+              <div id="cluster-status-badge" class="cad-btn" style="color:#34d399;border-color:#1e3a2f;background:#0d1915;cursor:default;">
+                KiCad 10.0.7
               </div>
             </div>
           </header>
 
-          <!-- Main Workspace Container -->
-          <div class="flex-1 flex overflow-hidden relative">
-            <!-- Center GPU Canvas & Overlay Area -->
-            <div id="center-viewport" class="flex-1 h-full relative overflow-hidden bg-slate-950 flex flex-col">
-              <!-- Floating GPU Toolbar -->
-              <div id="gpu-toolbar" class="absolute top-4 left-4 z-20 flex items-center space-x-2 bg-slate-900/95 border border-slate-800 rounded-lg p-1.5 shadow-xl">
-                <button id="btn-zoom-in" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-200 text-xs font-mono font-bold" title="Zoom In">+</button>
-                <button id="btn-zoom-out" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-200 text-xs font-mono font-bold" title="Zoom Out">-</button>
-                <button id="btn-zoom-fit" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-200 text-xs font-mono" title="Fit Board">Fit</button>
-                <div class="w-px h-4 bg-slate-800"></div>
-                <button id="btn-3d-stackup" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white text-xs font-medium transition-colors" title="Toggle 3D Exploded Multi-Layer Stackup Orbit (Shift+Drag to rotate)">
-                  🧊 3D Stackup Orbit
-                </button>
-                <a id="link-3d-vrml" href="/samples/complex_hierarchy/board.wrl" download class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-mono" title="Download Headless KiCad 3D VRML Export (.wrl)">
-                  ⬇ .WRL 3D
-                </a>
-                <div class="w-px h-4 bg-slate-800"></div>
-                <select id="rust-net-select" class="bg-slate-950 border border-slate-700 text-xs text-emerald-300 rounded px-2 py-1 font-mono max-w-[230px]" title="Select or click any trace/pad/via to X-Ray its electrical net">
-                  <option value="0">🔬 Probe Net (Click trace)...</option>
-                </select>
-                <div class="w-px h-4 bg-slate-800"></div>
-                <button id="btn-drop-pin" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-rose-600 text-slate-200 hover:text-white text-xs font-medium transition-colors">
-                  📍 Drop Review Pin
-                </button>
+          <!-- Main CAD Workspace (Left Toolstrip + Center Canvas + Right Appearance/Inspector Dock) -->
+          <div class="cad-workspace">
+            <!-- Left Vertical CAD Tool Strip -->
+            <aside class="cad-toolstrip">
+              <button id="btn-tool-select" class="cad-tool-btn cad-tool-btn-active" title="Select / Probe Net (Click any trace, via, or pad)">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M3 2L13 7.5L8.5 9L7 13.5L3 2Z"/>
+                </svg>
+              </button>
+              <button id="btn-drop-pin" class="cad-tool-btn" title="Place Design Review Annotation Marker">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <circle cx="8" cy="7" r="4"/>
+                  <path d="M8 11V15M8 1V3M1 7H3M13 7H15"/>
+                </svg>
+              </button>
+              <div class="cad-tool-sep"></div>
+              <button id="btn-zoom-in" class="cad-tool-btn" title="Zoom In">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <path d="M8 3V13M3 8H13"/>
+                </svg>
+              </button>
+              <button id="btn-zoom-out" class="cad-tool-btn" title="Zoom Out">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <path d="M3 8H13"/>
+                </svg>
+              </button>
+              <button id="btn-zoom-fit" class="cad-tool-btn" title="Fit Board to Viewport">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+                  <path d="M2 6V2H6M10 2H14V6M14 10V14H10M6 14H2V10"/>
+                </svg>
+              </button>
+              <div class="cad-tool-sep"></div>
+              <button id="btn-3d-stackup" class="cad-tool-btn" title="Toggle 3D Multi-Layer Stackup Orbit (Hold Shift + Drag to rotate)">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+                  <path d="M8 1.5L14 5V11L8 14.5L2 11V5L8 1.5Z"/>
+                  <path d="M2 5L8 8.5L14 5M8 8.5V14.5"/>
+                </svg>
+              </button>
+            </aside>
 
-                <!-- Diff Mode Controls (Visible when Visual Diff tab active) -->
-                <div id="diff-toolbar-controls" class="hidden flex items-center space-x-2 pl-2 border-l border-slate-800">
-                  <button id="btn-diff-boolean" class="px-2.5 py-1 rounded bg-indigo-600 text-white text-xs font-medium">Boolean Shader</button>
-                  <button id="btn-diff-wipe" class="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-xs font-medium">Split Wipe</button>
-                  <input id="input-wipe-slider" type="range" min="0" max="100" value="50" class="w-28 accent-cyan-400 cursor-pointer" />
-                </div>
-              </div>
-
-              <!-- Probed Electrical Net & Signal Length X-Ray Banner -->
-              <div id="net-probe-banner" class="hidden absolute top-16 left-4 z-20 bg-slate-900/95 border border-emerald-500/50 rounded-lg px-3.5 py-2 shadow-2xl flex items-center space-x-3 text-xs font-mono">
+            <!-- Center GPU PCB Canvas & Overlays -->
+            <div id="center-viewport" class="cad-viewport">
+              <!-- Compact Floating Net Measurement Readout (Visible when a net is probed) -->
+              <div id="net-probe-banner" class="hidden cad-net-hud">
                 <div id="net-probe-info"></div>
-                <button id="btn-clear-net" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-rose-600 text-slate-200 hover:text-white text-[11px]">✕ Clear</button>
+                <button id="btn-clear-net" class="cad-btn" style="height:20px;padding:0 6px;font-size:10px;">Clear</button>
               </div>
 
-              <!-- Bottom Coordinate, O(1) Spatial Hover Inspector & Rust GPU Telemetry HUD -->
-              <div class="absolute bottom-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
-                <div class="bg-slate-900/95 border border-slate-800 rounded-md px-3 py-1.5 shadow-lg flex items-center space-x-3 text-xs font-mono">
-                  <span id="rust-coord-hud" class="text-cyan-400 font-semibold min-w-[165px]">X: 130.00 mm  Y: 95.00 mm</span>
-                  <div class="w-px h-3 bg-slate-700"></div>
-                  <div id="rust-hud-stats" class="text-[11px] text-slate-300">Initializing Rust GPU SDF Pipeline...</div>
-                </div>
-                <div id="rust-hover-inspector" class="bg-slate-900/95 border border-slate-800 rounded-md px-3 py-1.5 shadow-lg text-[11px] font-mono text-cyan-300">
-                  O(1) Spatial Grid Ready — Hover or click any trace, via, or pad to probe net
-                </div>
-              </div>
+              <!-- Primary Full-Screen Rust WebGL2 Instanced SDF Canvas -->
+              <canvas id="rust-gpu-canvas" class="cad-canvas"></canvas>
 
-              <!-- Primary Full-Screen Rust WebGL2/WGPU Instanced SDF Canvas -->
-              <canvas id="rust-gpu-canvas" class="block w-full h-full cursor-grab active:cursor-grabbing"></canvas>
-
-              <!-- Schematic Hierarchy Overlay -->
-              <div id="schematic-view-panel" class="hidden absolute inset-0 bg-slate-950 flex flex-col p-6 overflow-auto z-30">
-                <div class="flex items-center space-x-2 mb-4">
-                  <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Schematic Sheet Hierarchy:</span>
-                  <button data-sch="/samples/complex_hierarchy/complex_hierarchy.svg" class="sch-btn px-3 py-1 rounded bg-indigo-600 text-white text-xs">Root Sheet</button>
-                  <button data-sch="/samples/complex_hierarchy/complex_hierarchy-ampli_ht_horizontal.svg" class="sch-btn px-3 py-1 rounded bg-slate-800 text-slate-300 text-xs">Ampli Horizontal</button>
-                  <button data-sch="/samples/complex_hierarchy/complex_hierarchy-ampli_ht_vertical.svg" class="sch-btn px-3 py-1 rounded bg-slate-800 text-slate-300 text-xs">Ampli Vertical</button>
+              <!-- Schematic Hierarchy View -->
+              <div id="schematic-view-panel" class="hidden absolute inset-0 flex flex-col z-30" style="background:#0c0e14;padding:12px;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+                  <span style="font-size:11px;font-weight:600;color:#8b93a6;text-transform:uppercase;">Sheet Hierarchy:</span>
+                  <button data-sch="/samples/complex_hierarchy/complex_hierarchy.svg" class="sch-btn cad-btn cad-btn-active">Root Sheet</button>
+                  <button data-sch="/samples/complex_hierarchy/complex_hierarchy-ampli_ht_horizontal.svg" class="sch-btn cad-btn">ampli_ht_horizontal.kicad_sch</button>
+                  <button data-sch="/samples/complex_hierarchy/complex_hierarchy-ampli_ht_vertical.svg" class="sch-btn cad-btn">ampli_ht_vertical.kicad_sch</button>
                 </div>
-                <div class="flex-1 bg-white rounded-xl p-4 overflow-auto flex items-center justify-center shadow-2xl">
+                <div class="flex-1 bg-white overflow-auto flex items-center justify-center" style="border:1px solid #252b3b;border-radius:2px;padding:12px;">
                   <img id="schematic-svg-img" src="/samples/complex_hierarchy/complex_hierarchy.svg" class="max-w-full max-h-full object-contain" />
                 </div>
               </div>
 
-              <!-- DRC Audit Overlay -->
-              <div id="drc-view-panel" class="hidden absolute inset-0 bg-slate-950 flex flex-col p-6 overflow-y-auto z-30">
-                <div class="flex items-center justify-between mb-4">
-                  <h2 class="text-sm font-bold text-slate-100">KiCad DRC Audit Report (Parsed in Rust)</h2>
-                  <span class="text-xs font-mono text-amber-400">Click any violation to jump GPU camera to coordinate</span>
+              <!-- DRC Audit Table View -->
+              <div id="drc-view-panel" class="hidden absolute inset-0 flex flex-col overflow-y-auto z-30" style="background:#0c0e14;">
+                <div class="cad-panel-header" style="height:32px;padding:0 14px;">
+                  <span>DESIGN RULE CHECK (DRC) VIOLATIONS</span>
+                  <span style="color:#949eb2;font-weight:400;text-transform:none;">Click any row to center viewport on violation</span>
                 </div>
-                <div id="drc-list-container" class="space-y-2"></div>
+                <div id="drc-list-container" style="flex:1;overflow-y:auto;"></div>
               </div>
 
-              <!-- Centralized Component Library & Supply Chain BOM Overlay -->
-              <div id="parts-view-panel" class="hidden absolute inset-0 bg-slate-950 flex flex-col p-6 overflow-y-auto z-30">
-                <div class="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 class="text-sm font-bold text-slate-100">Enterprise Component Library &amp; Supply Chain Telemetry</h2>
-                    <p class="text-xs text-slate-400 mt-0.5">Live MPN lifecycle verification &amp; cached DigiKey / Mouser stock index</p>
-                  </div>
-                  <input id="input-parts-search" type="text" placeholder="Filter MPN, manufacturer, footprint..." class="w-72 bg-slate-900 border border-slate-700 rounded-md px-3 py-1.5 text-xs text-slate-100" />
+              <!-- BOM & Component Library View -->
+              <div id="parts-view-panel" class="hidden absolute inset-0 flex flex-col overflow-y-auto z-30" style="background:#0c0e14;">
+                <div class="cad-panel-header" style="height:36px;padding:0 14px;">
+                  <span>BILL OF MATERIALS &amp; COMPONENT LIBRARY</span>
+                  <input id="input-parts-search" type="text" placeholder="Filter MPN, manufacturer, footprint..." class="cad-select" style="width:240px;" />
                 </div>
-                <div id="parts-list-container" class="space-y-2"></div>
+                <div id="parts-list-container" style="flex:1;overflow-y:auto;"></div>
               </div>
             </div>
 
-            <!-- Right Sidebar: PCB Layer Stack + Review Pin Threads -->
-            <aside class="w-80 bg-slate-900 border-l border-slate-800 flex flex-col z-20 shrink-0">
-              <!-- Layer Stack Section -->
-              <div class="p-3 border-b border-slate-800">
-                <div class="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
-                  GPU Shader Layer Uniforms
-                </div>
-                <div id="layer-controls-list" class="space-y-1.5 text-xs">
-                  <label class="flex items-center justify-between p-1.5 rounded bg-slate-950/70 border border-slate-800 cursor-pointer">
-                    <span class="flex items-center space-x-2">
-                      <input type="checkbox" data-bit="1" checked class="layer-toggle accent-amber-500" />
-                      <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                      <span>F.Cu (Front Copper)</span>
-                    </span>
-                    <span class="font-mono text-[10px] text-slate-400">Bit 0</span>
-                  </label>
-                  <label class="flex items-center justify-between p-1.5 rounded bg-slate-950/70 border border-slate-800 cursor-pointer">
-                    <span class="flex items-center space-x-2">
-                      <input type="checkbox" data-bit="4096" checked class="layer-toggle accent-purple-500" />
-                      <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
-                      <span>In1..In4.Cu (Inner Cu)</span>
-                    </span>
-                    <span class="font-mono text-[10px] text-slate-400">Bit 12</span>
-                  </label>
-                  <label class="flex items-center justify-between p-1.5 rounded bg-slate-950/70 border border-slate-800 cursor-pointer">
-                    <span class="flex items-center space-x-2">
-                      <input type="checkbox" data-bit="2" checked class="layer-toggle accent-blue-500" />
-                      <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-                      <span>B.Cu (Bottom Copper)</span>
-                    </span>
-                    <span class="font-mono text-[10px] text-slate-400">Bit 1</span>
-                  </label>
-                  <label class="flex items-center justify-between p-1.5 rounded bg-slate-950/70 border border-slate-800 cursor-pointer">
-                    <span class="flex items-center space-x-2">
-                      <input type="checkbox" data-bit="4" checked class="layer-toggle accent-slate-200" />
-                      <span class="w-2.5 h-2.5 rounded-full bg-slate-200"></span>
-                      <span>Edge.Cuts (Outline)</span>
-                    </span>
-                    <span class="font-mono text-[10px] text-slate-400">Bit 2</span>
-                  </label>
-                  <label class="flex items-center justify-between p-1.5 rounded bg-slate-950/70 border border-slate-800 cursor-pointer">
-                    <span class="flex items-center space-x-2">
-                      <input type="checkbox" data-bit="8" checked class="layer-toggle accent-slate-100" />
-                      <span class="w-2.5 h-2.5 rounded-full bg-slate-100"></span>
-                      <span>F.SilkS (Silkscreen)</span>
-                    </span>
-                    <span class="font-mono text-[10px] text-slate-400">Bit 3</span>
-                  </label>
-                  <label class="flex items-center justify-between p-1.5 rounded bg-slate-950/70 border border-slate-800 cursor-pointer">
-                    <span class="flex items-center space-x-2">
-                      <input type="checkbox" data-bit="32" class="layer-toggle accent-emerald-500" />
-                      <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                      <span>F.Mask (Solder Mask)</span>
-                    </span>
-                    <span class="font-mono text-[10px] text-slate-400">Bit 5</span>
-                  </label>
-                  <label class="flex items-center justify-between p-1.5 rounded bg-slate-950/70 border border-slate-800 cursor-pointer">
-                    <span class="flex items-center space-x-2">
-                      <input type="checkbox" data-bit="128" checked class="layer-toggle accent-amber-400" />
-                      <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-                      <span>DRC Violation Pins</span>
-                    </span>
-                    <span class="font-mono text-[10px] text-slate-400">Bit 7</span>
-                  </label>
-                  <label class="flex items-center justify-between p-1.5 rounded bg-slate-950/70 border border-slate-800 cursor-pointer">
-                    <span class="flex items-center space-x-2">
-                      <input type="checkbox" data-bit="256" checked class="layer-toggle accent-rose-500" />
-                      <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-                      <span>Review Thread Pins</span>
-                    </span>
-                    <span class="font-mono text-[10px] text-slate-400">Bit 8</span>
-                  </label>
-                </div>
+            <!-- Right Docked Appearance & Annotations Panel -->
+            <aside class="cad-sidebar">
+              <div class="cad-panel-header">
+                <span>Layers &amp; Objects</span>
+                <span>Visibility</span>
+              </div>
+              <div id="layer-controls-list" class="cad-layer-list">
+                <label class="cad-layer-row">
+                  <span class="cad-layer-left">
+                    <input type="checkbox" data-bit="1" checked />
+                    <span class="cad-swatch" style="background:#c83434;"></span>
+                    <span>F.Cu</span>
+                  </span>
+                  <span class="cad-layer-type">Front Copper</span>
+                </label>
+                <label class="cad-layer-row">
+                  <span class="cad-layer-left">
+                    <input type="checkbox" data-bit="4096" checked />
+                    <span class="cad-swatch" style="background:#bf8f28;"></span>
+                    <span>In1..In4.Cu</span>
+                  </span>
+                  <span class="cad-layer-type">Inner Copper</span>
+                </label>
+                <label class="cad-layer-row">
+                  <span class="cad-layer-left">
+                    <input type="checkbox" data-bit="2" checked />
+                    <span class="cad-swatch" style="background:#3370c2;"></span>
+                    <span>B.Cu</span>
+                  </span>
+                  <span class="cad-layer-type">Back Copper</span>
+                </label>
+                <label class="cad-layer-row">
+                  <span class="cad-layer-left">
+                    <input type="checkbox" data-bit="8" checked />
+                    <span class="cad-swatch" style="background:#d6e3e8;"></span>
+                    <span>F.SilkS</span>
+                  </span>
+                  <span class="cad-layer-type">Silkscreen</span>
+                </label>
+                <label class="cad-layer-row">
+                  <span class="cad-layer-left">
+                    <input type="checkbox" data-bit="32" />
+                    <span class="cad-swatch" style="background:#1c8a61;"></span>
+                    <span>F.Mask</span>
+                  </span>
+                  <span class="cad-layer-type">Solder Mask</span>
+                </label>
+                <label class="cad-layer-row">
+                  <span class="cad-layer-left">
+                    <input type="checkbox" data-bit="4" checked />
+                    <span class="cad-swatch" style="background:#e0c238;"></span>
+                    <span>Edge.Cuts</span>
+                  </span>
+                  <span class="cad-layer-type">Board Outline</span>
+                </label>
+                <label class="cad-layer-row">
+                  <span class="cad-layer-left">
+                    <input type="checkbox" data-bit="128" checked />
+                    <span class="cad-swatch" style="background:#f59e0b;"></span>
+                    <span>DRC Markers</span>
+                  </span>
+                  <span class="cad-layer-type">Violations</span>
+                </label>
+                <label class="cad-layer-row">
+                  <span class="cad-layer-left">
+                    <input type="checkbox" data-bit="256" checked />
+                    <span class="cad-swatch" style="background:#ea384c;"></span>
+                    <span>Annotations</span>
+                  </span>
+                  <span class="cad-layer-type">Review Pins</span>
+                </label>
               </div>
 
-              <!-- New Pin Form (Hidden until user clicks on board in Drop Pin Mode) -->
-              <div id="new-pin-box" class="hidden p-3 bg-rose-500/10 border-b border-rose-500/30 space-y-2">
-                <div class="flex items-center justify-between text-xs font-semibold text-rose-400">
-                  <span id="new-pin-coord-label">New Pin</span>
-                  <button id="btn-cancel-pin" class="text-slate-400 hover:text-white">✕</button>
+              <!-- New Annotation Form (Shown when placing a review marker) -->
+              <div id="new-pin-box" class="hidden" style="padding:8px 10px;background:#181c28;border-top:1px solid #2b3245;border-bottom:1px solid #2b3245;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:11px;font-weight:600;color:#f87171;">
+                  <span id="new-pin-coord-label">New Marker</span>
+                  <button id="btn-cancel-pin" class="cad-btn" style="height:18px;padding:0 5px;">✕</button>
                 </div>
-                <input id="input-pin-author" type="text" value="HardwareReviewer" class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200" />
-                <input id="input-pin-msg" type="text" placeholder="Enter design review comment..." class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200" />
-                <button id="btn-save-pin" class="w-full py-1 rounded bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold">
-                  Create Pin Thread
+                <input id="input-pin-author" type="text" value="HardwareEng" class="cad-select" style="width:100%;margin-bottom:5px;" />
+                <input id="input-pin-msg" type="text" placeholder="Enter annotation note..." class="cad-select" style="width:100%;margin-bottom:6px;" />
+                <button id="btn-save-pin" class="cad-btn cad-btn-active" style="width:100%;justify-content:center;">
+                  Save Annotation
                 </button>
               </div>
 
-              <!-- Review Threads List -->
-              <div class="p-3 border-b border-slate-800 flex items-center justify-between">
-                <span class="text-xs font-semibold uppercase tracking-wider text-slate-300">Redline Review Threads</span>
-                <span id="threads-count-badge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">2</span>
+              <!-- Design Annotations Section -->
+              <div class="cad-panel-header">
+                <span>Design Annotations</span>
+                <span id="threads-count-badge">2</span>
               </div>
-              <div id="threads-list-container" class="flex-1 overflow-y-auto p-2 space-y-2"></div>
+              <div id="threads-list-container" style="flex:1;overflow-y:auto;"></div>
             </aside>
           </div>
+
+          <!-- Bottom Docked Industrial CAD Status Bar -->
+          <footer class="cad-statusbar">
+            <div id="rust-coord-hud" class="cad-status-cell" style="width:210px;color:#e2e8f0;">
+              X: 130.000 mm   Y:  95.000 mm
+            </div>
+            <div id="rust-zoom-hud" class="cad-status-cell" style="width:205px;color:#94a3b8;">
+              Grid: 1.00 mm   Scale: 8.0 px/mm
+            </div>
+            <div id="rust-hover-inspector" class="cad-status-cell cad-status-cell-flex" style="color:#93c5fd;">
+              Ready — Click any copper track, via, or pad to inspect net length
+            </div>
+            <div id="rust-hud-stats" class="cad-status-cell" style="border-right:none;color:#94a3b8;">
+              2D Ortho | 0 primitives
+            </div>
+          </footer>
         </div>
-        "#,
+        "##,
     );
 
     // Initialize WebGL2 Instanced SDF Renderer on `#rust-gpu-canvas`
@@ -695,6 +730,7 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                 r.zoom_at_cursor(factor, e.client_x() as f64, e.client_y() as f64);
                 r.draw();
             }
+            app.update_telemetry_hud();
         }) as Box<dyn FnMut(_)>);
         let _ = canvas.add_event_listener_with_callback("wheel", on_wheel.as_ref().unchecked_ref());
         on_wheel.forget();
@@ -716,10 +752,16 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                     app.pending_pin_coords = Some((mm_x, mm_y));
                     app.drop_pin_mode = false;
                     if let Some(btn) = app.doc.get_element_by_id("btn-drop-pin") {
-                        btn.set_text_content(Some("📍 Drop Review Pin"));
+                        btn.set_class_name("cad-tool-btn");
+                    }
+                    if let Some(sel_btn) = app.doc.get_element_by_id("btn-tool-select") {
+                        sel_btn.set_class_name("cad-tool-btn cad-tool-btn-active");
                     }
                     if let Some(lbl) = app.doc.get_element_by_id("new-pin-coord-label") {
-                        lbl.set_text_content(Some(&format!("New Pin at ({:.1}mm, {:.1}mm)", mm_x, mm_y)));
+                        lbl.set_text_content(Some(&format!(
+                            "Marker @ ({:.2}, {:.2}) mm",
+                            mm_x, mm_y
+                        )));
                     }
                     if let Some(box_el) = app.doc.get_element_by_id("new-pin-box") {
                         let _ = box_el.class_list().remove_1("hidden");
@@ -766,7 +808,7 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
             }
             if let Some(hud) = app.doc.get_element_by_id("rust-coord-hud") {
                 hud.set_text_content(Some(&format!(
-                    "X: {:.2} mm  Y: {:.2} mm",
+                    "X: {:7.3} mm   Y: {:7.3} mm",
                     coord_pair.0, coord_pair.1
                 )));
             }
@@ -779,10 +821,10 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
 
             if let Some(insp) = app.doc.get_element_by_id("rust-hover-inspector") {
                 if let Some(ref info) = hit {
-                    insp.set_text_content(Some(&format!("🔍 {}", info.summary)));
+                    insp.set_text_content(Some(&info.summary));
                 } else {
                     insp.set_text_content(Some(
-                        "O(1) Spatial Grid Ready — Hover or click any trace, via, or pad to probe net",
+                        "Ready — Click any copper track, via, or pad to inspect net length",
                     ));
                 }
             }
@@ -810,7 +852,6 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                 let dx = (e.client_x() as f64) - app.mouse_down_pos.0;
                 let dy = (e.client_y() as f64) - app.mouse_down_pos.1;
                 if (dx * dx + dy * dy).sqrt() < 5.0 {
-                    // User clicked on the PCB canvas: probe the clicked trace/via/pad's electrical net!
                     let mut coord_pair = (0.0f32, 0.0f32);
                     let mut active_mask = 4607u32;
                     if let Some(ref r) = app.renderer {
@@ -864,6 +905,7 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
         let _ = clear_btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
         cb.forget();
     }
+
     // Project Selector
     if let Some(sel) = doc.get_element_by_id("rust-project-select") {
         let st = state.clone();
@@ -897,11 +939,11 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
                 r.draw();
             }
             if let Some(el) = e.current_target().and_then(|t| t.dyn_into::<Element>().ok()) {
-                el.set_text_content(Some(if is_3d {
-                    "🧊 3D Stackup: ON (Shift+Drag)"
+                el.set_class_name(if is_3d {
+                    "cad-tool-btn cad-tool-btn-active"
                 } else {
-                    "🧊 3D Stackup Orbit"
-                }));
+                    "cad-tool-btn"
+                });
             }
             app.update_telemetry_hud();
         }) as Box<dyn FnMut(_)>);
@@ -930,6 +972,7 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
                 r.fit_to_board();
                 r.draw();
             }
+            app.update_telemetry_hud();
         }) as Box<dyn FnMut(_)>);
         let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
         cb.forget();
@@ -944,6 +987,7 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
                 r.scale_px_per_mm = (r.scale_px_per_mm * 1.25).min(500.0);
                 r.draw();
             }
+            app.update_telemetry_hud();
         }) as Box<dyn FnMut(_)>);
         let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
         cb.forget();
@@ -956,6 +1000,7 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
                 r.scale_px_per_mm = (r.scale_px_per_mm * 0.8).max(1.5);
                 r.draw();
             }
+            app.update_telemetry_hud();
         }) as Box<dyn FnMut(_)>);
         let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
         cb.forget();
@@ -968,23 +1013,60 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
                 r.fit_to_board();
                 r.draw();
             }
+            app.update_telemetry_hud();
         }) as Box<dyn FnMut(_)>);
         let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
         cb.forget();
     }
 
-    // Drop Pin Toggle
+    // Select Tool & Drop Pin Tool Toggle
+    if let Some(btn) = doc.get_element_by_id("btn-tool-select") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |_e: Event| {
+            let mut app = st.borrow_mut();
+            app.drop_pin_mode = false;
+            if let Some(s) = app.doc.get_element_by_id("btn-tool-select") {
+                s.set_class_name("cad-tool-btn cad-tool-btn-active");
+            }
+            if let Some(p) = app.doc.get_element_by_id("btn-drop-pin") {
+                p.set_class_name("cad-tool-btn");
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
     if let Some(btn) = doc.get_element_by_id("btn-drop-pin") {
         let st = state.clone();
-        let cb = Closure::wrap(Box::new(move |e: Event| {
+        let cb = Closure::wrap(Box::new(move |_e: Event| {
             let mut app = st.borrow_mut();
             app.drop_pin_mode = !app.drop_pin_mode;
-            if let Some(el) = e.current_target().and_then(|t| t.dyn_into::<Element>().ok()) {
-                el.set_text_content(Some(if app.drop_pin_mode {
-                    "🎯 Click Board..."
+            let active = app.drop_pin_mode;
+            if let Some(p) = app.doc.get_element_by_id("btn-drop-pin") {
+                p.set_class_name(if active {
+                    "cad-tool-btn cad-tool-btn-active"
                 } else {
-                    "📍 Drop Review Pin"
-                }));
+                    "cad-tool-btn"
+                });
+            }
+            if let Some(s) = app.doc.get_element_by_id("btn-tool-select") {
+                s.set_class_name(if active {
+                    "cad-tool-btn"
+                } else {
+                    "cad-tool-btn cad-tool-btn-active"
+                });
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    if let Some(btn) = doc.get_element_by_id("btn-cancel-pin") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |_e: Event| {
+            let app = st.borrow();
+            if let Some(box_el) = app.doc.get_element_by_id("new-pin-box") {
+                let _ = box_el.class_list().add_1("hidden");
             }
         }) as Box<dyn FnMut(_)>);
         let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
@@ -1029,7 +1111,6 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
                             },
                         );
 
-                        // Fire-and-forget POST /api/threads to persist in SQLite
                         let payload = serde_json::json!({
                             "revision_id": "rev-main",
                             "file_type": "pcb",
@@ -1053,7 +1134,7 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
         cb.forget();
     }
 
-    // View Mode Tabs ("tab-pcb", "tab-diff", "tab-schematic", "tab-drc", "tab-parts")
+    // View Mode Tabs
     for (tab_id, mode_name) in [
         ("tab-pcb", "pcb"),
         ("tab-diff", "diff"),
@@ -1107,6 +1188,7 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
                                         r.scale_px_per_mm = 26.0;
                                         r.draw();
                                     }
+                                    app.update_telemetry_hud();
                                 }
                             }
                         }
@@ -1118,7 +1200,7 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
         cb.forget();
     }
 
-    // Diff Mode Controls (Boolean Shader vs Split Wipe Slider)
+    // Diff Mode Controls (Overlay vs Split Wipe Slider)
     if let Some(btn) = doc.get_element_by_id("btn-diff-boolean") {
         let st = state.clone();
         let cb = Closure::wrap(Box::new(move |_e: Event| {
@@ -1214,11 +1296,9 @@ pub fn switch_view_tab(state: &Rc<RefCell<AppController>>, mode: &str) {
     ] {
         if let Some(btn) = app.doc.get_element_by_id(tid) {
             if m == mode {
-                btn.set_class_name("px-3 py-1 rounded text-xs font-medium bg-indigo-600 text-white");
+                btn.set_class_name("cad-tab cad-tab-active");
             } else {
-                btn.set_class_name(
-                    "px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-slate-200",
-                );
+                btn.set_class_name("cad-tab");
             }
         }
     }
@@ -1254,6 +1334,7 @@ pub fn switch_view_tab(state: &Rc<RefCell<AppController>>, mode: &str) {
             r.fit_to_board();
             r.draw();
         }
+        app.update_telemetry_hud();
     }
 }
 
@@ -1276,31 +1357,31 @@ fn render_parts_list(state: &Rc<RefCell<AppController>>) {
             continue;
         }
 
-        let status_cls = match p.lifecycle_status.as_str() {
-            "active" => "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
-            "nrnd" => "text-amber-400 bg-amber-500/10 border-amber-500/30",
-            _ => "text-rose-400 bg-rose-500/10 border-rose-500/30",
+        let status_color = match p.lifecycle_status.as_str() {
+            "active" => "#34d399",
+            "nrnd" => "#fbbf24",
+            _ => "#f87171",
         };
 
         html.push_str(&format!(
-            r#"<div class="p-3 rounded-lg border border-slate-800 bg-slate-900/70 flex items-center justify-between">
-                 <div class="space-y-1">
-                   <div class="flex items-center space-x-2">
-                     <span class="text-xs font-mono font-bold text-cyan-300">{mpn}</span>
-                     <span class="text-xs text-slate-400">&bull; {mfr}</span>
-                     <span class="text-[10px] font-mono uppercase px-2 py-0.5 rounded border {status_cls}">{status}</span>
+            r#"<div class="cad-table-row">
+                 <div>
+                   <div style="display:flex;align-items:center;gap:8px;">
+                     <span style="font-family:monospace;font-weight:700;color:#60a5fa;font-size:12px;">{mpn}</span>
+                     <span style="color:#8b93a6;font-size:11px;">{mfr}</span>
+                     <span style="font-family:monospace;font-size:10px;text-transform:uppercase;color:{status_color};">[{status}]</span>
                    </div>
-                   <div class="text-xs text-slate-200">{desc}</div>
-                   <div class="text-[11px] font-mono text-slate-400">Footprint: {fp} &bull; Symbol: {sym}</div>
+                   <div style="color:#d0d6e2;font-size:11px;margin-top:2px;">{desc}</div>
+                   <div style="font-family:monospace;font-size:10px;color:#6c768a;margin-top:2px;">Footprint: {fp} | Symbol: {sym}</div>
                  </div>
-                 <div class="text-right font-mono text-xs space-y-1">
-                   <div class="text-slate-100 font-bold">${price:.3} / unit</div>
-                   <div class="text-[11px] text-emerald-400">DigiKey: {dk} &bull; Mouser: {ms}</div>
+                 <div style="text-align:right;font-family:monospace;font-size:11px;">
+                   <div style="color:#f0f3f8;font-weight:600;">${price:.3}</div>
+                   <div style="font-size:10px;color:#8b93a6;">DK: {dk} | Mouser: {ms}</div>
                  </div>
                </div>"#,
             mpn = p.mpn,
             mfr = p.manufacturer,
-            status_cls = status_cls,
+            status_color = status_color,
             status = p.lifecycle_status,
             desc = p.description,
             fp = p.footprint_name,
@@ -1325,28 +1406,28 @@ fn render_threads_sidebar(state: &Rc<RefCell<AppController>>) {
 
     let mut html = String::new();
     for (idx, t) in app.threads.iter().enumerate() {
-        let dot_color = if t.resolved { "bg-emerald-500" } else { "bg-rose-500" };
-        let resolve_label = if t.resolved { "✓ Resolved" } else { "Resolve" };
+        let dot_color = if t.resolved { "#10b981" } else { "#ef4444" };
+        let resolve_label = if t.resolved { "RESOLVED" } else { "OPEN" };
         let body = t
             .messages
             .first()
             .map(|m| m.body.as_str())
-            .unwrap_or("Review pin");
+            .unwrap_or("Annotation");
         html.push_str(&format!(
-            r#"<div data-idx="{idx}" class="thread-card p-2.5 rounded-lg border border-slate-800 bg-slate-950/70 hover:border-indigo-500 cursor-pointer transition-all">
-                 <div class="flex items-center justify-between mb-1">
-                   <span class="flex items-center space-x-1.5">
-                     <span class="w-2 h-2 rounded-full {dot_color}"></span>
-                     <span class="text-xs font-semibold text-slate-200">{author}</span>
+            r#"<div data-idx="{idx}" class="thread-card" style="padding:7px 9px;border-bottom:1px solid #1e2330;cursor:pointer;">
+                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                   <span style="display:flex;align-items:center;gap:6px;font-weight:600;color:#d8dee9;font-size:11px;">
+                     <span style="width:7px;height:7px;border-radius:1px;background:{dot_color};display:inline-block;"></span>
+                     <span>{author}</span>
                    </span>
-                   <div class="flex items-center space-x-1">
-                     <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-cyan-400 border border-slate-800">
-                       {x:.1}mm, {y:.1}mm
+                   <div style="display:flex;align-items:center;gap:4px;">
+                     <span style="font-family:monospace;font-size:10px;color:#60a5fa;">
+                       ({x:.1}, {y:.1})
                      </span>
-                     <button data-resolve-idx="{idx}" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-emerald-600 text-[10px] text-slate-300 hover:text-white">{resolve_label}</button>
+                     <button data-resolve-idx="{idx}" class="cad-btn" style="height:18px;padding:0 5px;font-size:9px;">{resolve_label}</button>
                    </div>
                  </div>
-                 <p class="text-xs text-slate-300 leading-relaxed">{body}</p>
+                 <div style="font-size:11px;color:#94a3b8;line-height:1.35;">{body}</div>
                </div>"#,
             idx = idx,
             dot_color = dot_color,
@@ -1389,6 +1470,7 @@ fn render_threads_sidebar(state: &Rc<RefCell<AppController>>) {
                                 r.scale_px_per_mm = 18.0;
                                 r.draw();
                             }
+                            app.update_telemetry_hud();
                         }
                     }
                 }
@@ -1404,21 +1486,14 @@ fn sync_backend_telemetry_and_parts(state: Rc<RefCell<AppController>>) {
     let st_metrics = state.clone();
     fetch_text_with_callback("/api/cluster/metrics", move |json_str| {
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(&json_str) {
-            let node = val
-                .get("node_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("cadoxide-node-primary");
             let workers = val
                 .get("worker_pool")
-                .and_then(|w| w.get("max_workers"))
+                .and_then(|w| w.get("max_concurrency"))
                 .and_then(|v| v.as_u64())
                 .unwrap_or(4);
             let app = st_metrics.borrow();
             if let Some(badge) = app.doc.get_element_by_id("cluster-status-badge") {
-                badge.set_text_content(Some(&format!(
-                    "{} ({} Workers • CAS Online)",
-                    node, workers
-                )));
+                badge.set_text_content(Some(&format!("ONLINE ({}W)", workers)));
             }
         }
     });
@@ -1470,6 +1545,7 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
                     r.fit_to_board();
                     r.draw();
                 }
+                app.update_telemetry_hud();
             }
 
             // Fetch Rev B PCB & Compute Pure-Rust Vector Diff
@@ -1542,25 +1618,25 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
             if let Some(list_el) = app.doc.get_element_by_id("drc-list-container") {
                 let mut html = String::new();
                 for (i, d) in items.iter().take(100).enumerate() {
-                    let badge_cls = if d.severity == "error" {
-                        "text-red-400 bg-red-500/10 border-red-500/30"
+                    let sev_color = if d.severity == "error" {
+                        "#f87171"
                     } else {
-                        "text-amber-400 bg-amber-500/10 border-amber-500/30"
+                        "#fbbf24"
                     };
                     html.push_str(&format!(
-                        r#"<div data-drc-idx="{i}" class="drc-row p-3 rounded-lg border border-slate-800 bg-slate-900/70 hover:border-indigo-500 flex items-center justify-between cursor-pointer">
+                        r#"<div data-drc-idx="{i}" class="drc-row cad-table-row" style="cursor:pointer;">
                              <div>
-                               <div class="text-xs font-semibold text-slate-200">{desc}</div>
-                               <div class="text-[11px] font-mono text-slate-400 mt-0.5">({x:.2} mm, {y:.2} mm) &bull; {tname}</div>
+                               <div style="font-size:11px;font-weight:600;color:#e2e8f0;">{desc}</div>
+                               <div style="font-family:monospace;font-size:10px;color:#8b93a6;margin-top:2px;">({x:.3} mm, {y:.3} mm) | Rule: {tname}</div>
                              </div>
-                             <span class="text-[10px] font-mono uppercase px-2 py-0.5 rounded border {badge_cls}">{sev}</span>
+                             <span style="font-family:monospace;font-size:10px;text-transform:uppercase;color:{sev_color};">[{sev}]</span>
                            </div>"#,
                         i = i,
                         desc = d.description,
                         x = d.x,
                         y = d.y,
                         tname = d.type_name,
-                        badge_cls = badge_cls,
+                        sev_color = sev_color,
                         sev = d.severity
                     ));
                 }
