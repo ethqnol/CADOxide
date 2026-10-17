@@ -29,62 +29,71 @@ precision highp float;
 uniform vec4 u_center_and_scale;        // x: centerX_mm, y: centerY_mm, z: scale_px_per_mm
 uniform vec4 u_viewport_and_opacities;  // x: width_px, y: height_px
 uniform vec4 u_board_bounds;            // x: min_x, y: min_y, z: max_x, w: max_y
-uniform vec4 u_3d_and_hover;            // x: mode_3d
+uniform vec4 u_3d_and_hover;            // x: mode_3d, y: yaw_rad, z: pitch_rad
 
 in vec2 v_ndc;
 out vec4 outColor;
 
 void main() {
-  vec3 bg = vec3(0.038, 0.045, 0.062); // Deep EDA charcoal (#0a0b10)
+  vec3 bg = vec3(0.055, 0.062, 0.075); // Neutral EDA dark charcoal (#0e1013)
 
   float scale = u_center_and_scale.z;
   vec2 screen_px = vec2(
     v_ndc.x * (u_viewport_and_opacities.x * 0.5),
     -v_ndc.y * (u_viewport_and_opacities.y * 0.5)
   );
-  vec2 world_mm = u_center_and_scale.xy + screen_px / scale;
 
-  // In 2D Ortho mode, render subtle FR4 substrate fill inside board bounds & adaptive metric grid
-  if (u_3d_and_hover.x < 0.05) {
-    vec2 bmin = u_board_bounds.xy + vec2(2.0);
-    vec2 bmax = u_board_bounds.zw - vec2(2.0);
-    if (world_mm.x >= bmin.x && world_mm.x <= bmax.x &&
-        world_mm.y >= bmin.y && world_mm.y <= bmax.y) {
-      bg = vec3(0.052, 0.072, 0.064); // Subtle dark FR4 core tint
-    }
+  vec2 world_mm;
+  if (u_3d_and_hover.x > 0.05) {
+    float cy = cos(u_3d_and_hover.y);
+    float sy = sin(u_3d_and_hover.y);
+    float cp = max(cos(u_3d_and_hover.z), 0.12);
+    float rx = screen_px.x / scale;
+    float ry = (screen_px.y / scale) / cp;
+    vec2 rel = vec2(rx * cy + ry * sy, -rx * sy + ry * cy);
+    world_mm = u_center_and_scale.xy + rel;
+  } else {
+    world_mm = u_center_and_scale.xy + screen_px / scale;
+  }
 
-    // Major 10.0 mm (1 cm) engineering grid lines
-    vec2 d10 = abs(fract(world_mm / 10.0 + 0.5) - 0.5) * 10.0 * scale;
-    float line10 = min(d10.x, d10.y);
-    if (line10 < 0.85) {
-      bg = mix(bg, vec3(0.14, 0.17, 0.22), 0.55);
-    }
+  vec2 bmin = u_board_bounds.xy + vec2(2.0);
+  vec2 bmax = u_board_bounds.zw - vec2(2.0);
+  if (world_mm.x >= bmin.x && world_mm.x <= bmax.x &&
+      world_mm.y >= bmin.y && world_mm.y <= bmax.y) {
+    bg = vec3(0.065, 0.092, 0.078); // Authentic dark FR4 substrate core
+  }
 
-    // 1.0 mm minor grid dots (visible when zoomed past 4 px/mm)
-    if (scale > 4.0) {
-      vec2 d1 = abs(fract(world_mm + 0.5) - 0.5) * scale;
-      float dot1 = length(d1);
-      if (dot1 < 1.15) {
-        float fade = clamp((scale - 4.0) / 6.0, 0.0, 1.0);
-        bg = mix(bg, vec3(0.24, 0.29, 0.36), 0.65 * fade);
-      }
-    }
+  // Major 10.0 mm (1 cm) engineering grid lines
+  vec2 d10 = abs(fract(world_mm / 10.0 + 0.5) - 0.5) * 10.0 * scale;
+  float line10 = min(d10.x, d10.y);
+  if (line10 < 0.85) {
+    bg = mix(bg, vec3(0.16, 0.19, 0.23), 0.52);
+  }
 
-    // 0.25 mm fine pitch grid dots (visible when zoomed past 24 px/mm)
-    if (scale > 24.0) {
-      vec2 d025 = abs(fract(world_mm * 4.0 + 0.5) - 0.5) * (scale * 0.25);
-      float dot025 = length(d025);
-      if (dot025 < 0.95) {
-        float fade = clamp((scale - 24.0) / 16.0, 0.0, 1.0);
-        bg = mix(bg, vec3(0.20, 0.24, 0.30), 0.45 * fade);
-      }
+  // 1.0 mm minor grid dots (visible when zoomed past 4 px/mm)
+  if (scale > 4.0) {
+    vec2 d1 = abs(fract(world_mm + 0.5) - 0.5) * scale;
+    float dot1 = length(d1);
+    if (dot1 < 1.15) {
+      float fade = clamp((scale - 4.0) / 6.0, 0.0, 1.0);
+      bg = mix(bg, vec3(0.26, 0.30, 0.36), 0.65 * fade);
     }
+  }
 
-    // Auxiliary board origin crosshair at bottom-left of board bounds
-    vec2 orig_px = abs(world_mm - vec2(bmin.x, bmax.y)) * scale;
-    if ((orig_px.x < 0.8 && orig_px.y < 14.0) || (orig_px.y < 0.8 && orig_px.x < 14.0)) {
-      bg = vec3(0.45, 0.22, 0.22);
+  // 0.25 mm fine pitch grid dots (visible when zoomed past 24 px/mm)
+  if (scale > 24.0) {
+    vec2 d025 = abs(fract(world_mm * 4.0 + 0.5) - 0.5) * (scale * 0.25);
+    float dot025 = length(d025);
+    if (dot025 < 0.95) {
+      float fade = clamp((scale - 24.0) / 16.0, 0.0, 1.0);
+      bg = mix(bg, vec3(0.22, 0.25, 0.30), 0.45 * fade);
     }
+  }
+
+  // Auxiliary board origin crosshair at bottom-left of board bounds
+  vec2 orig_px = abs(world_mm - vec2(bmin.x, bmax.y)) * scale;
+  if ((orig_px.x < 0.8 && orig_px.y < 14.0) || (orig_px.y < 0.8 && orig_px.x < 14.0)) {
+    bg = vec3(0.55, 0.25, 0.25);
   }
 
   outColor = vec4(bg, 1.0);
@@ -102,6 +111,7 @@ uniform vec4 u_viewport_and_opacities;  // x: width_px, y: height_px, z: f_cu_al
 uniform vec4 u_diff_params;             // x: is_diff_view (0=normal, 1=blend, 2=wipe), y: wipe_ratio (0..1), z: silk_alpha, w: mask_alpha
 uniform vec4 u_3d_and_hover;            // x: mode_3d (0=2D, >0=3D Z-explosion), y: yaw_rad, z: pitch_rad, w: hovered_instance_id (-1 = none)
 uniform int u_selected_net_id;          // 0 = no net selected, >0 = highlight this electrical net across all layers
+uniform int u_selected_inst_id;         // -1 = no primitive selected, >=0 = highlight selected primitive
 
 out vec2 v_local_pos;
 out vec2 v_seg_len_and_r;
@@ -195,7 +205,13 @@ void main() {
   }
 
   v_drill_and_type = vec2(a_params.y * 0.5, prim_type);
-  v_is_hovered = (int(u_3d_and_hover.w) == gl_InstanceID) ? 1.0 : 0.0;
+  if (u_selected_inst_id >= 0 && u_selected_inst_id == gl_InstanceID) {
+    v_is_hovered = 3.0;
+  } else if (int(u_3d_and_hover.w) == gl_InstanceID) {
+    v_is_hovered = 1.0;
+  } else {
+    v_is_hovered = 0.0;
+  }
 
   // Check diff flags: bit 9 (512)=unchanged, bit 10 (1024)=removed (only in A), bit 11 (2048)=added (only in B)
   if (u_diff_params.x > 0.5) {
@@ -212,8 +228,8 @@ void main() {
   } else {
     v_diff_flags = 0.0;
     if ((layer_mask & 256u) != 0u) {
-      // Review Annotation Marker
-      v_color = prim_type > 6.5 ? vec4(0.16, 0.74, 0.48, 0.96) : vec4(0.92, 0.22, 0.30, 0.96);
+      // Review Annotation / CAD Preview Overlay
+      v_color = prim_type > 6.5 ? vec4(0.16, 0.74, 0.48, 0.96) : vec4(0.96, 0.78, 0.22, 0.96);
     } else if ((layer_mask & 128u) != 0u) {
       // DRC Violation Ring
       v_color = vec4(0.96, 0.62, 0.08, 0.96);
@@ -247,8 +263,8 @@ void main() {
     // GPU Netlist Highlighting
     if (u_selected_net_id > 0) {
       if (net_id == u_selected_net_id) {
-        v_is_hovered = 2.0; // Highlight entire connected net
-      } else if ((layer_mask & 388u) == 0u) {
+        if (v_is_hovered < 2.5) v_is_hovered = 2.0; // Highlight entire connected net
+      } else if ((layer_mask & 388u) == 0u && v_is_hovered < 2.5) {
         v_color = vec4(v_color.rgb * 0.30, v_color.a * 0.15);
       }
     }
@@ -404,8 +420,10 @@ void main() {
     if (dist > outer_r || dist < inner_r) discard;
   }
 
-  // Real-time GPU Net Highlighting (v_is_hovered > 1.5) or Cursor Hover (v_is_hovered > 0.5)
-  if (v_is_hovered > 1.5) {
+  // Selected Primitive Highlight (v_is_hovered > 2.5), Net Highlight (v_is_hovered > 1.5), or Cursor Hover (v_is_hovered > 0.5)
+  if (v_is_hovered > 2.5) {
+    outColor = vec4(mix(outColor.rgb, vec3(1.0, 0.92, 0.38), 0.85), 1.0);
+  } else if (v_is_hovered > 1.5) {
     outColor = vec4(mix(outColor.rgb, vec3(0.20, 0.98, 0.72), 0.82), 1.0);
   } else if (v_is_hovered > 0.5) {
     outColor = vec4(mix(outColor.rgb, vec3(0.35, 0.92, 1.0), 0.75), 1.0);
@@ -433,6 +451,7 @@ pub struct RustGpuRenderer {
     pub pitch_rad: f32,
     pub hovered_instance_id: i32,
     pub selected_net_id: i32,
+    pub selected_instance_id: i32,
 }
 
 impl RustGpuRenderer {
@@ -490,6 +509,7 @@ impl RustGpuRenderer {
             pitch_rad: 0.62,
             hovered_instance_id: -1,
             selected_net_id: 0,
+            selected_instance_id: -1,
         })
     }
 
@@ -536,10 +556,19 @@ impl RustGpuRenderer {
             .unwrap_or(1.0) as f32;
         let px_x = ((client_x - rect.left()) - rect.width() * 0.5) as f32 * dpr;
         let px_y = ((client_y - rect.top()) - rect.height() * 0.5) as f32 * dpr;
-        (
-            self.center_mm.0 + px_x / self.scale_px_per_mm,
-            self.center_mm.1 + px_y / self.scale_px_per_mm,
-        )
+        let rx = px_x / self.scale_px_per_mm;
+        let sy_mm = px_y / self.scale_px_per_mm;
+        if self.mode_3d_explode > 0.05 {
+            let cy = self.yaw_rad.cos();
+            let sy = self.yaw_rad.sin();
+            let cp = self.pitch_rad.cos().max(0.12);
+            let ry = sy_mm / cp;
+            let rel_x = rx * cy + ry * sy;
+            let rel_y = -rx * sy + ry * cy;
+            (self.center_mm.0 + rel_x, self.center_mm.1 + rel_y)
+        } else {
+            (self.center_mm.0 + rx, self.center_mm.1 + sy_mm)
+        }
     }
 
     pub fn zoom_at_cursor(&mut self, factor: f32, client_x: f64, client_y: f64) {
@@ -554,13 +583,25 @@ impl RustGpuRenderer {
         let dpr = web_sys::window()
             .map(|w| w.device_pixel_ratio())
             .unwrap_or(1.0) as f32;
-        self.center_mm.0 -= (dx as f32 * dpr) / self.scale_px_per_mm;
-        self.center_mm.1 -= (dy as f32 * dpr) / self.scale_px_per_mm;
+        let dx_mm = (dx as f32 * dpr) / self.scale_px_per_mm;
+        let dy_mm = (dy as f32 * dpr) / self.scale_px_per_mm;
+        if self.mode_3d_explode > 0.05 {
+            let cy = self.yaw_rad.cos();
+            let sy = self.yaw_rad.sin();
+            let cp = self.pitch_rad.cos().max(0.12);
+            let rx = -dx_mm;
+            let ry = -dy_mm / cp;
+            self.center_mm.0 += rx * cy + ry * sy;
+            self.center_mm.1 += -rx * sy + ry * cy;
+        } else {
+            self.center_mm.0 -= dx_mm;
+            self.center_mm.1 -= dy_mm;
+        }
     }
 
     pub fn orbit_by_css_px(&mut self, dx: f64, dy: f64) {
-        self.yaw_rad += (dx as f32) * 0.008;
-        self.pitch_rad = (self.pitch_rad + (dy as f32) * 0.008).clamp(0.1, 1.35);
+        self.yaw_rad += (dx as f32) * 0.0085;
+        self.pitch_rad = (self.pitch_rad + (dy as f32) * 0.0085).clamp(0.0, 1.38);
     }
 
     pub fn draw(&mut self) {
@@ -569,7 +610,7 @@ impl RustGpuRenderer {
         let h = self.canvas.height() as i32;
 
         self.gl.viewport(0, 0, w, h);
-        self.gl.clear_color(0.038, 0.045, 0.062, 1.0);
+        self.gl.clear_color(0.055, 0.062, 0.075, 1.0);
         self.gl.clear(GL::COLOR_BUFFER_BIT);
 
         self.gl.bind_vertex_array(Some(&self.vao));
@@ -674,6 +715,13 @@ impl RustGpuRenderer {
             .get_uniform_location(&self.program, "u_selected_net_id")
         {
             self.gl.uniform1i(Some(&u5), self.selected_net_id);
+        }
+
+        if let Some(u6) = self
+            .gl
+            .get_uniform_location(&self.program, "u_selected_inst_id")
+        {
+            self.gl.uniform1i(Some(&u6), self.selected_instance_id);
         }
 
         self.gl

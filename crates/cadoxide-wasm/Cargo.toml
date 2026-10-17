@@ -35,6 +35,8 @@ features = [
   "WebGlVertexArrayObject",
   "MouseEvent",
   "WheelEvent",
+  "KeyboardEvent",
+  "CssStyleDeclaration",
   "Event",
   "EventTarget",
   "DomRect",

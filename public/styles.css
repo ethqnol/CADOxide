@@ -1,1307 +1,393 @@
-/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */
-@layer properties;
-@layer theme, base, components, utilities;
-@layer theme {
-  :root, :host {
-    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
-      "Segoe UI Symbol", "Noto Color Emoji";
-    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-      "Courier New", monospace;
-    --color-red-400: oklch(70.4% 0.191 22.216);
-    --color-red-500: oklch(63.7% 0.237 25.331);
-    --color-amber-300: oklch(87.9% 0.169 91.605);
-    --color-amber-400: oklch(82.8% 0.189 84.429);
-    --color-amber-500: oklch(76.9% 0.188 70.08);
-    --color-emerald-300: oklch(84.5% 0.143 164.978);
-    --color-emerald-400: oklch(76.5% 0.177 163.223);
-    --color-emerald-500: oklch(69.6% 0.17 162.48);
-    --color-emerald-600: oklch(59.6% 0.145 163.225);
-    --color-cyan-300: oklch(86.5% 0.127 207.078);
-    --color-cyan-400: oklch(78.9% 0.154 211.53);
-    --color-blue-500: oklch(62.3% 0.214 259.815);
-    --color-indigo-400: oklch(67.3% 0.182 276.935);
-    --color-indigo-500: oklch(58.5% 0.233 277.117);
-    --color-indigo-600: oklch(51.1% 0.262 276.966);
-    --color-purple-500: oklch(62.7% 0.265 303.9);
-    --color-rose-400: oklch(71.2% 0.194 13.428);
-    --color-rose-500: oklch(64.5% 0.246 16.439);
-    --color-rose-600: oklch(58.6% 0.253 17.585);
-    --color-slate-100: oklch(96.8% 0.007 247.896);
-    --color-slate-200: oklch(92.9% 0.013 255.508);
-    --color-slate-300: oklch(86.9% 0.022 252.894);
-    --color-slate-400: oklch(70.4% 0.04 256.788);
-    --color-slate-700: oklch(37.2% 0.044 257.287);
-    --color-slate-800: oklch(27.9% 0.041 260.031);
-    --color-slate-900: oklch(20.8% 0.042 265.755);
-    --color-slate-950: oklch(12.9% 0.042 264.695);
-    --color-white: #fff;
-    --spacing: 0.25rem;
-    --text-xs: 0.75rem;
-    --text-xs--line-height: calc(1 / 0.75);
-    --text-sm: 0.875rem;
-    --text-sm--line-height: calc(1.25 / 0.875);
-    --text-base: 1rem;
-    --text-base--line-height: calc(1.5 / 1);
-    --font-weight-medium: 500;
-    --font-weight-semibold: 600;
-    --font-weight-bold: 700;
-    --tracking-tight: -0.025em;
-    --tracking-wider: 0.05em;
-    --leading-relaxed: 1.625;
-    --radius-md: 0.375rem;
-    --radius-lg: 0.5rem;
-    --radius-xl: 0.75rem;
-    --default-transition-duration: 150ms;
-    --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-    --default-font-family: var(--font-sans);
-    --default-mono-font-family: var(--font-mono);
-  }
-}
-@layer base {
-  *, ::after, ::before, ::backdrop, ::file-selector-button {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-    border: 0 solid;
-  }
-  html, :host {
-    line-height: 1.5;
-    -webkit-text-size-adjust: 100%;
-    tab-size: 4;
-    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");
-    font-feature-settings: var(--default-font-feature-settings, normal);
-    font-variation-settings: var(--default-font-variation-settings, normal);
-    -webkit-tap-highlight-color: transparent;
-  }
-  hr {
-    height: 0;
-    color: inherit;
-    border-top-width: 1px;
-  }
-  abbr:where([title]) {
-    -webkit-text-decoration: underline dotted;
-    text-decoration: underline dotted;
-  }
-  h1, h2, h3, h4, h5, h6 {
-    font-size: inherit;
-    font-weight: inherit;
-  }
-  a {
-    color: inherit;
-    -webkit-text-decoration: inherit;
-    text-decoration: inherit;
-  }
-  b, strong {
-    font-weight: bolder;
-  }
-  code, kbd, samp, pre {
-    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
-    font-feature-settings: var(--default-mono-font-feature-settings, normal);
-    font-variation-settings: var(--default-mono-font-variation-settings, normal);
-    font-size: 1em;
-  }
-  small {
-    font-size: 80%;
-  }
-  sub, sup {
-    font-size: 75%;
-    line-height: 0;
-    position: relative;
-    vertical-align: baseline;
-  }
-  sub {
-    bottom: -0.25em;
-  }
-  sup {
-    top: -0.5em;
-  }
-  table {
-    text-indent: 0;
-    border-color: inherit;
-    border-collapse: collapse;
-  }
-  :-moz-focusring:where(:not(iframe)) {
-    outline: auto;
-  }
-  progress {
-    vertical-align: baseline;
-  }
-  summary {
-    display: list-item;
-  }
-  ol, ul, menu {
-    list-style: none;
-  }
-  img, svg, video, canvas, audio, iframe, embed, object {
-    display: block;
-    vertical-align: middle;
-  }
-  img, video {
-    max-width: 100%;
-    height: auto;
-  }
-  button, input, select, optgroup, textarea, ::file-selector-button {
-    font: inherit;
-    font-feature-settings: inherit;
-    font-variation-settings: inherit;
-    letter-spacing: inherit;
-    color: inherit;
-    border-radius: 0;
-    background-color: transparent;
-    opacity: 1;
-  }
-  :where(select:is([multiple], [size])) optgroup {
-    font-weight: bolder;
-  }
-  :where(select:is([multiple], [size])) optgroup option {
-    padding-inline-start: 20px;
-  }
-  ::file-selector-button {
-    margin-inline-end: 4px;
-  }
-  ::placeholder {
-    opacity: 1;
-  }
-  @supports (not (-webkit-appearance: -apple-pay-button))  or (contain-intrinsic-size: 1px) {
-    ::placeholder {
-      color: currentcolor;
-      @supports (color: color-mix(in lab, red, red)) {
-        color: color-mix(in oklab, currentcolor 50%, transparent);
-      }
-    }
-  }
-  textarea {
-    resize: vertical;
-  }
-  ::-webkit-search-decoration {
-    -webkit-appearance: none;
-  }
-  ::-webkit-date-and-time-value {
-    min-height: 1lh;
-    text-align: inherit;
-  }
-  ::-webkit-datetime-edit {
-    display: inline-flex;
-  }
-  ::-webkit-datetime-edit-fields-wrapper {
-    padding: 0;
-  }
-  ::-webkit-datetime-edit, ::-webkit-datetime-edit-year-field, ::-webkit-datetime-edit-month-field, ::-webkit-datetime-edit-day-field, ::-webkit-datetime-edit-hour-field, ::-webkit-datetime-edit-minute-field, ::-webkit-datetime-edit-second-field, ::-webkit-datetime-edit-millisecond-field, ::-webkit-datetime-edit-meridiem-field {
-    padding-block: 0;
-  }
-  ::-webkit-calendar-picker-indicator {
-    line-height: 1;
-  }
-  :-moz-ui-invalid {
-    box-shadow: none;
-  }
-  button, input:where([type="button"], [type="reset"], [type="submit"]), ::file-selector-button {
-    appearance: button;
-  }
-  ::-webkit-inner-spin-button, ::-webkit-outer-spin-button {
-    height: auto;
-  }
-  [hidden]:where(:not([hidden="until-found"])) {
-    display: none !important;
-  }
-}
-@layer utilities {
-  .pointer-events-none {
-    pointer-events: none;
-  }
-  .absolute {
-    position: absolute;
-  }
-  .relative {
-    position: relative;
-  }
-  .static {
-    position: static;
-  }
-  .inset-0 {
-    inset: 0px;
-  }
-  .top-4 {
-    top: calc(var(--spacing) * 4);
-  }
-  .right-4 {
-    right: calc(var(--spacing) * 4);
-  }
-  .bottom-4 {
-    bottom: calc(var(--spacing) * 4);
-  }
-  .left-4 {
-    left: calc(var(--spacing) * 4);
-  }
-  .z-20 {
-    z-index: 20;
-  }
-  .z-30 {
-    z-index: 30;
-  }
-  .container {
-    width: 100%;
-    @media (width >= 40rem) {
-      max-width: 40rem;
-    }
-    @media (width >= 48rem) {
-      max-width: 48rem;
-    }
-    @media (width >= 64rem) {
-      max-width: 64rem;
-    }
-    @media (width >= 80rem) {
-      max-width: 80rem;
-    }
-    @media (width >= 96rem) {
-      max-width: 96rem;
-    }
-  }
-  .mx-1 {
-    margin-inline: var(--spacing);
-  }
-  .mt-0\.5 {
-    margin-top: calc(var(--spacing) * 0.5);
-  }
-  .mb-1 {
-    margin-bottom: var(--spacing);
-  }
-  .mb-2 {
-    margin-bottom: calc(var(--spacing) * 2);
-  }
-  .mb-4 {
-    margin-bottom: calc(var(--spacing) * 4);
-  }
-  .block {
-    display: block;
-  }
-  .flex {
-    display: flex;
-  }
-  .hidden {
-    display: none;
-  }
-  .h-2 {
-    height: calc(var(--spacing) * 2);
-  }
-  .h-2\.5 {
-    height: calc(var(--spacing) * 2.5);
-  }
-  .h-3 {
-    height: calc(var(--spacing) * 3);
-  }
-  .h-4 {
-    height: calc(var(--spacing) * 4);
-  }
-  .h-8 {
-    height: calc(var(--spacing) * 8);
-  }
-  .h-14 {
-    height: calc(var(--spacing) * 14);
-  }
-  .h-full {
-    height: 100%;
-  }
-  .h-screen {
-    height: 100vh;
-  }
-  .max-h-full {
-    max-height: 100%;
-  }
-  .w-2 {
-    width: calc(var(--spacing) * 2);
-  }
-  .w-2\.5 {
-    width: calc(var(--spacing) * 2.5);
-  }
-  .w-8 {
-    width: calc(var(--spacing) * 8);
-  }
-  .w-28 {
-    width: calc(var(--spacing) * 28);
-  }
-  .w-72 {
-    width: calc(var(--spacing) * 72);
-  }
-  .w-80 {
-    width: calc(var(--spacing) * 80);
-  }
-  .w-full {
-    width: 100%;
-  }
-  .w-px {
-    width: 1px;
-  }
-  .w-screen {
-    width: 100vw;
-  }
-  .max-w-full {
-    max-width: 100%;
-  }
-  .min-w-\[165px\] {
-    min-width: 165px;
-  }
-  .flex-1 {
-    flex: 1;
-  }
-  .shrink-0 {
-    flex-shrink: 0;
-  }
-  .cursor-grab {
-    cursor: grab;
-  }
-  .cursor-pointer {
-    cursor: pointer;
-  }
-  .flex-col {
-    flex-direction: column;
-  }
-  .items-center {
-    align-items: center;
-  }
-  .justify-between {
-    justify-content: space-between;
-  }
-  .justify-center {
-    justify-content: center;
-  }
-  :where(.space-y-1 > :not(:last-child)) {
-    --tw-space-y-reverse: 0;
-    margin-block-start: calc(var(--spacing) * var(--tw-space-y-reverse));
-    margin-block-end: calc(var(--spacing) * calc(1 - var(--tw-space-y-reverse)));
-  }
-  :where(.space-y-1\.5 > :not(:last-child)) {
-    --tw-space-y-reverse: 0;
-    margin-block-start: calc(calc(var(--spacing) * 1.5) * var(--tw-space-y-reverse));
-    margin-block-end: calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-y-reverse)));
-  }
-  :where(.space-y-2 > :not(:last-child)) {
-    --tw-space-y-reverse: 0;
-    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));
-    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));
-  }
-  :where(.space-x-1 > :not(:last-child)) {
-    --tw-space-x-reverse: 0;
-    margin-inline-start: calc(var(--spacing) * var(--tw-space-x-reverse));
-    margin-inline-end: calc(var(--spacing) * calc(1 - var(--tw-space-x-reverse)));
-  }
-  :where(.space-x-1\.5 > :not(:last-child)) {
-    --tw-space-x-reverse: 0;
-    margin-inline-start: calc(calc(var(--spacing) * 1.5) * var(--tw-space-x-reverse));
-    margin-inline-end: calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-x-reverse)));
-  }
-  :where(.space-x-2 > :not(:last-child)) {
-    --tw-space-x-reverse: 0;
-    margin-inline-start: calc(calc(var(--spacing) * 2) * var(--tw-space-x-reverse));
-    margin-inline-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-x-reverse)));
-  }
-  :where(.space-x-3 > :not(:last-child)) {
-    --tw-space-x-reverse: 0;
-    margin-inline-start: calc(calc(var(--spacing) * 3) * var(--tw-space-x-reverse));
-    margin-inline-end: calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-x-reverse)));
-  }
-  .overflow-auto {
-    overflow: auto;
-  }
-  .overflow-hidden {
-    overflow: hidden;
-  }
-  .overflow-y-auto {
-    overflow-y: auto;
-  }
-  .rounded {
-    border-radius: 0.25rem;
-  }
-  .rounded-full {
-    border-radius: calc(infinity * 1px);
-  }
-  .rounded-lg {
-    border-radius: var(--radius-lg);
-  }
-  .rounded-md {
-    border-radius: var(--radius-md);
-  }
-  .rounded-xl {
-    border-radius: var(--radius-xl);
-  }
-  .border {
-    border-style: var(--tw-border-style);
-    border-width: 1px;
-  }
-  .border-b {
-    border-bottom-style: var(--tw-border-style);
-    border-bottom-width: 1px;
-  }
-  .border-l {
-    border-left-style: var(--tw-border-style);
-    border-left-width: 1px;
-  }
-  .border-amber-500\/30 {
-    border-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 30%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-amber-500) 30%, transparent);
-    }
-  }
-  .border-amber-500\/40 {
-    border-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 40%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-amber-500) 40%, transparent);
-    }
-  }
-  .border-emerald-500\/30 {
-    border-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 30%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-emerald-500) 30%, transparent);
-    }
-  }
-  .border-emerald-500\/40 {
-    border-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 40%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-emerald-500) 40%, transparent);
-    }
-  }
-  .border-red-500\/30 {
-    border-color: color-mix(in srgb, oklch(63.7% 0.237 25.331) 30%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-red-500) 30%, transparent);
-    }
-  }
-  .border-rose-500\/30 {
-    border-color: color-mix(in srgb, oklch(64.5% 0.246 16.439) 30%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-rose-500) 30%, transparent);
-    }
-  }
-  .border-slate-700 {
-    border-color: var(--color-slate-700);
-  }
-  .border-slate-800 {
-    border-color: var(--color-slate-800);
-  }
-  .bg-amber-400 {
-    background-color: var(--color-amber-400);
-  }
-  .bg-amber-500 {
-    background-color: var(--color-amber-500);
-  }
-  .bg-amber-500\/10 {
-    background-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 10%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-amber-500) 10%, transparent);
-    }
-  }
-  .bg-amber-500\/20 {
-    background-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 20%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-amber-500) 20%, transparent);
-    }
-  }
-  .bg-blue-500 {
-    background-color: var(--color-blue-500);
-  }
-  .bg-emerald-500 {
-    background-color: var(--color-emerald-500);
-  }
-  .bg-emerald-500\/10 {
-    background-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 10%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-emerald-500) 10%, transparent);
-    }
-  }
-  .bg-emerald-500\/20 {
-    background-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 20%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-emerald-500) 20%, transparent);
-    }
-  }
-  .bg-indigo-600 {
-    background-color: var(--color-indigo-600);
-  }
-  .bg-purple-500 {
-    background-color: var(--color-purple-500);
-  }
-  .bg-red-500\/10 {
-    background-color: color-mix(in srgb, oklch(63.7% 0.237 25.331) 10%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-red-500) 10%, transparent);
-    }
-  }
-  .bg-rose-500 {
-    background-color: var(--color-rose-500);
-  }
-  .bg-rose-500\/10 {
-    background-color: color-mix(in srgb, oklch(64.5% 0.246 16.439) 10%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-rose-500) 10%, transparent);
-    }
-  }
-  .bg-rose-600 {
-    background-color: var(--color-rose-600);
-  }
-  .bg-slate-100 {
-    background-color: var(--color-slate-100);
-  }
-  .bg-slate-200 {
-    background-color: var(--color-slate-200);
-  }
-  .bg-slate-700 {
-    background-color: var(--color-slate-700);
-  }
-  .bg-slate-800 {
-    background-color: var(--color-slate-800);
-  }
-  .bg-slate-900 {
-    background-color: var(--color-slate-900);
-  }
-  .bg-slate-900\/70 {
-    background-color: color-mix(in srgb, oklch(20.8% 0.042 265.755) 70%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-slate-900) 70%, transparent);
-    }
-  }
-  .bg-slate-900\/95 {
-    background-color: color-mix(in srgb, oklch(20.8% 0.042 265.755) 95%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-slate-900) 95%, transparent);
-    }
-  }
-  .bg-slate-950 {
-    background-color: var(--color-slate-950);
-  }
-  .bg-slate-950\/70 {
-    background-color: color-mix(in srgb, oklch(12.9% 0.042 264.695) 70%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-slate-950) 70%, transparent);
-    }
-  }
-  .bg-white {
-    background-color: var(--color-white);
-  }
-  .bg-gradient-to-tr {
-    --tw-gradient-position: to top right in oklab;
-    background-image: linear-gradient(var(--tw-gradient-stops));
-  }
-  .from-amber-500 {
-    --tw-gradient-from: var(--color-amber-500);
-    --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
-  }
-  .to-indigo-600 {
-    --tw-gradient-to: var(--color-indigo-600);
-    --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
-  }
-  .object-contain {
-    object-fit: contain;
-  }
-  .p-1 {
-    padding: var(--spacing);
-  }
-  .p-1\.5 {
-    padding: calc(var(--spacing) * 1.5);
-  }
-  .p-2 {
-    padding: calc(var(--spacing) * 2);
-  }
-  .p-2\.5 {
-    padding: calc(var(--spacing) * 2.5);
-  }
-  .p-3 {
-    padding: calc(var(--spacing) * 3);
-  }
-  .p-4 {
-    padding: calc(var(--spacing) * 4);
-  }
-  .p-6 {
-    padding: calc(var(--spacing) * 6);
-  }
-  .px-1\.5 {
-    padding-inline: calc(var(--spacing) * 1.5);
-  }
-  .px-2 {
-    padding-inline: calc(var(--spacing) * 2);
-  }
-  .px-2\.5 {
-    padding-inline: calc(var(--spacing) * 2.5);
-  }
-  .px-3 {
-    padding-inline: calc(var(--spacing) * 3);
-  }
-  .px-4 {
-    padding-inline: calc(var(--spacing) * 4);
-  }
-  .py-0\.5 {
-    padding-block: calc(var(--spacing) * 0.5);
-  }
-  .py-1 {
-    padding-block: var(--spacing);
-  }
-  .py-1\.5 {
-    padding-block: calc(var(--spacing) * 1.5);
-  }
-  .pl-2 {
-    padding-left: calc(var(--spacing) * 2);
-  }
-  .text-right {
-    text-align: right;
-  }
-  .font-mono {
-    font-family: var(--font-mono);
-  }
-  .font-sans {
-    font-family: var(--font-sans);
-  }
-  .text-base {
-    font-size: var(--text-base);
-    line-height: var(--tw-leading, var(--text-base--line-height));
-  }
-  .text-sm {
-    font-size: var(--text-sm);
-    line-height: var(--tw-leading, var(--text-sm--line-height));
-  }
-  .text-xs {
-    font-size: var(--text-xs);
-    line-height: var(--tw-leading, var(--text-xs--line-height));
-  }
-  .text-\[10px\] {
-    font-size: 10px;
-  }
-  .text-\[11px\] {
-    font-size: 11px;
-  }
-  .leading-relaxed {
-    --tw-leading: var(--leading-relaxed);
-    line-height: var(--leading-relaxed);
-  }
-  .font-bold {
-    --tw-font-weight: var(--font-weight-bold);
-    font-weight: var(--font-weight-bold);
-  }
-  .font-medium {
-    --tw-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-  }
-  .font-semibold {
-    --tw-font-weight: var(--font-weight-semibold);
-    font-weight: var(--font-weight-semibold);
-  }
-  .tracking-tight {
-    --tw-tracking: var(--tracking-tight);
-    letter-spacing: var(--tracking-tight);
-  }
-  .tracking-wider {
-    --tw-tracking: var(--tracking-wider);
-    letter-spacing: var(--tracking-wider);
-  }
-  .text-amber-300 {
-    color: var(--color-amber-300);
-  }
-  .text-amber-400 {
-    color: var(--color-amber-400);
-  }
-  .text-cyan-300 {
-    color: var(--color-cyan-300);
-  }
-  .text-cyan-400 {
-    color: var(--color-cyan-400);
-  }
-  .text-emerald-300 {
-    color: var(--color-emerald-300);
-  }
-  .text-emerald-400 {
-    color: var(--color-emerald-400);
-  }
-  .text-indigo-400 {
-    color: var(--color-indigo-400);
-  }
-  .text-red-400 {
-    color: var(--color-red-400);
-  }
-  .text-rose-400 {
-    color: var(--color-rose-400);
-  }
-  .text-slate-100 {
-    color: var(--color-slate-100);
-  }
-  .text-slate-200 {
-    color: var(--color-slate-200);
-  }
-  .text-slate-300 {
-    color: var(--color-slate-300);
-  }
-  .text-slate-400 {
-    color: var(--color-slate-400);
-  }
-  .text-white {
-    color: var(--color-white);
-  }
-  .uppercase {
-    text-transform: uppercase;
-  }
-  .accent-amber-400 {
-    accent-color: var(--color-amber-400);
-  }
-  .accent-amber-500 {
-    accent-color: var(--color-amber-500);
-  }
-  .accent-blue-500 {
-    accent-color: var(--color-blue-500);
-  }
-  .accent-cyan-400 {
-    accent-color: var(--color-cyan-400);
-  }
-  .accent-emerald-500 {
-    accent-color: var(--color-emerald-500);
-  }
-  .accent-purple-500 {
-    accent-color: var(--color-purple-500);
-  }
-  .accent-rose-500 {
-    accent-color: var(--color-rose-500);
-  }
-  .accent-slate-100 {
-    accent-color: var(--color-slate-100);
-  }
-  .accent-slate-200 {
-    accent-color: var(--color-slate-200);
-  }
-  .shadow-2xl {
-    --tw-shadow: 0 25px 50px -12px var(--tw-shadow-color, rgb(0 0 0 / 0.25));
-    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
-  }
-  .shadow-lg {
-    --tw-shadow: 0 10px 15px -3px var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--tw-shadow-color, rgb(0 0 0 / 0.1));
-    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
-  }
-  .shadow-xl {
-    --tw-shadow: 0 20px 25px -5px var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 8px 10px -6px var(--tw-shadow-color, rgb(0 0 0 / 0.1));
-    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
-  }
-  .transition-all {
-    transition-property: all;
-    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
-    transition-duration: var(--tw-duration, var(--default-transition-duration));
-  }
-  .transition-colors {
-    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;
-    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
-    transition-duration: var(--tw-duration, var(--default-transition-duration));
-  }
-  .select-none {
-    -webkit-user-select: none;
-    user-select: none;
-  }
-  @media (hover: hover) {
-    .hover\:border-indigo-500:hover {
-      border-color: var(--color-indigo-500);
-    }
-    .hover\:bg-amber-500\/30:hover {
-      background-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 30%, transparent);
-    }
-    @supports (color: color-mix(in lab, red, red)) {
-      .hover\:bg-amber-500\/30:hover {
-        background-color: color-mix(in oklab, var(--color-amber-500) 30%, transparent);
-      }
-    }
-    .hover\:bg-emerald-600:hover {
-      background-color: var(--color-emerald-600);
-    }
-    .hover\:bg-indigo-600:hover {
-      background-color: var(--color-indigo-600);
-    }
-    .hover\:bg-rose-500:hover {
-      background-color: var(--color-rose-500);
-    }
-    .hover\:bg-rose-600:hover {
-      background-color: var(--color-rose-600);
-    }
-    .hover\:bg-slate-700:hover {
-      background-color: var(--color-slate-700);
-    }
-    .hover\:bg-slate-800:hover {
-      background-color: var(--color-slate-800);
-    }
-    .hover\:text-slate-200:hover {
-      color: var(--color-slate-200);
-    }
-    .hover\:text-white:hover {
-      color: var(--color-white);
-    }
-  }
-  .active\:cursor-grabbing:active {
-    cursor: grabbing;
-  }
-}
-@property --tw-space-y-reverse {
-  syntax: "*";
-  inherits: false;
-  initial-value: 0;
-}
-@property --tw-space-x-reverse {
-  syntax: "*";
-  inherits: false;
-  initial-value: 0;
-}
-@property --tw-border-style {
-  syntax: "*";
-  inherits: false;
-  initial-value: solid;
-}
-@property --tw-gradient-position {
-  syntax: "*";
-  inherits: false;
-}
-@property --tw-gradient-from {
-  syntax: "<color>";
-  inherits: false;
-  initial-value: #0000;
-}
-@property --tw-gradient-via {
-  syntax: "<color>";
-  inherits: false;
-  initial-value: #0000;
-}
-@property --tw-gradient-to {
-  syntax: "<color>";
-  inherits: false;
-  initial-value: #0000;
-}
-@property --tw-gradient-stops {
-  syntax: "*";
-  inherits: false;
-}
-@property --tw-gradient-via-stops {
-  syntax: "*";
-  inherits: false;
-}
-@property --tw-gradient-from-position {
-  syntax: "<length-percentage>";
-  inherits: false;
-  initial-value: 0%;
-}
-@property --tw-gradient-via-position {
-  syntax: "<length-percentage>";
-  inherits: false;
-  initial-value: 50%;
-}
-@property --tw-gradient-to-position {
-  syntax: "<length-percentage>";
-  inherits: false;
-  initial-value: 100%;
-}
-@property --tw-leading {
-  syntax: "*";
-  inherits: false;
-}
-@property --tw-font-weight {
-  syntax: "*";
-  inherits: false;
-}
-@property --tw-tracking {
-  syntax: "*";
-  inherits: false;
-}
-@property --tw-shadow {
-  syntax: "*";
-  inherits: false;
-  initial-value: 0 0 #0000;
-}
-@property --tw-shadow-color {
-  syntax: "*";
-  inherits: false;
-}
-@property --tw-shadow-alpha {
-  syntax: "<percentage>";
-  inherits: false;
-  initial-value: 100%;
-}
-@property --tw-inset-shadow {
-  syntax: "*";
-  inherits: false;
-  initial-value: 0 0 #0000;
-}
-@property --tw-inset-shadow-color {
-  syntax: "*";
-  inherits: false;
-}
-@property --tw-inset-shadow-alpha {
-  syntax: "<percentage>";
-  inherits: false;
-  initial-value: 100%;
-}
-@property --tw-ring-color {
-  syntax: "*";
-  inherits: false;
-}
-@property --tw-ring-shadow {
-  syntax: "*";
-  inherits: false;
-  initial-value: 0 0 #0000;
-}
-@property --tw-inset-ring-color {
-  syntax: "*";
-  inherits: false;
-}
-@property --tw-inset-ring-shadow {
-  syntax: "*";
-  inherits: false;
-  initial-value: 0 0 #0000;
-}
-@property --tw-ring-inset {
-  syntax: "*";
-  inherits: false;
-}
-@property --tw-ring-offset-width {
-  syntax: "<length>";
-  inherits: false;
-  initial-value: 0px;
-}
-@property --tw-ring-offset-color {
-  syntax: "*";
-  inherits: false;
-  initial-value: #fff;
-}
-@property --tw-ring-offset-shadow {
-  syntax: "*";
-  inherits: false;
-  initial-value: 0 0 #0000;
-}
-@layer properties {
-  @supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color:rgb(from red r g b)))) {
-    *, ::before, ::after, ::backdrop {
-      --tw-space-y-reverse: 0;
-      --tw-space-x-reverse: 0;
-      --tw-border-style: solid;
-      --tw-gradient-position: initial;
-      --tw-gradient-from: #0000;
-      --tw-gradient-via: #0000;
-      --tw-gradient-to: #0000;
-      --tw-gradient-stops: initial;
-      --tw-gradient-via-stops: initial;
-      --tw-gradient-from-position: 0%;
-      --tw-gradient-via-position: 50%;
-      --tw-gradient-to-position: 100%;
-      --tw-leading: initial;
-      --tw-font-weight: initial;
-      --tw-tracking: initial;
-      --tw-shadow: 0 0 #0000;
-      --tw-shadow-color: initial;
-      --tw-shadow-alpha: 100%;
-      --tw-inset-shadow: 0 0 #0000;
-      --tw-inset-shadow-color: initial;
-      --tw-inset-shadow-alpha: 100%;
-      --tw-ring-color: initial;
-      --tw-ring-shadow: 0 0 #0000;
-      --tw-inset-ring-color: initial;
-      --tw-inset-ring-shadow: 0 0 #0000;
-      --tw-ring-inset: initial;
-      --tw-ring-offset-width: 0px;
-      --tw-ring-offset-color: #fff;
-      --tw-ring-offset-shadow: 0 0 #0000;
-    }
-  }
+/* CADoxide — Desktop EDA PCB CAD Workstation Stylesheet */
+*, ::before, ::after {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+  border-color: #2b303b;
 }
 
-.max-w-\[170px\] {
-  max-width: 170px;
-}
-.truncate {
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ============================================================================
-   CADoxide Professional EDA Workstation Stylesheet (KiCad / Altium Aesthetic)
-   ============================================================================ */
-.cad-shell {
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #0a0b10;
-  color: #d4d8e2;
+  background-color: #0e1013;
+  color: #d4d8e0;
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
   font-size: 12px;
-  overflow: hidden;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
   user-select: none;
 }
 
+.hidden {
+  display: none !important;
+}
+
+/* Main Desktop CAD Grid Shell */
+.cad-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #14161a;
+}
+
+/* Tier 1: Top Document & Workspace Tab Bar (32px) */
 .cad-menubar {
-  height: 34px;
-  background: #12151e;
-  border-bottom: 1px solid #232836;
-  padding: 0 10px;
+  height: 32px;
+  min-height: 32px;
+  background-color: #14161a;
+  border-bottom: 1px solid #262a33;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-shrink: 0;
-  z-index: 30;
+  padding: 0 8px;
+  gap: 8px;
+  z-index: 40;
+  overflow: hidden;
+}
+
+/* Tier 2: Contextual CAD Routing / 3D / Diff Parameter Bar (28px) */
+.cad-param-bar {
+  height: 28px;
+  min-height: 28px;
+  background-color: #181b20;
+  border-bottom: 1px solid #262a33;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  gap: 8px;
+  z-index: 39;
+  overflow: hidden;
 }
 
 .cad-menubar-group {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cad-param-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #828a99;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-left: 2px;
+  white-space: nowrap;
 }
 
 .cad-brand {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
+  padding: 0 6px 0 2px;
   font-weight: 700;
-  font-size: 13px;
-  letter-spacing: 0.02em;
-  color: #f0f3f8;
-  padding-right: 6px;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: #eceff4;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .cad-divider-v {
   width: 1px;
   height: 16px;
-  background: #252b3b;
-  margin: 0 4px;
+  background-color: #282d37;
+  margin: 0 2px;
+  flex-shrink: 0;
 }
 
+/* Compact CAD Controls (Selects, Inputs, Buttons) */
 .cad-select {
-  height: 24px;
-  background: #0b0d13;
-  border: 1px solid #2a3042;
+  height: 22px;
+  background-color: #111317;
+  color: #d8dee9;
+  border: 1px solid #2d323e;
   border-radius: 2px;
-  color: #dce1eb;
+  padding: 0 6px;
   font-size: 11px;
-  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, monospace;
-  padding: 0 8px;
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   outline: none;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .cad-select:focus {
-  border-color: #3b82f6;
+  border-color: #d4b047;
 }
 
-.cad-tabs {
-  display: flex;
-  align-items: center;
-  height: 24px;
-  background: #0b0d13;
-  border: 1px solid #252b3b;
+.cad-input {
+  height: 22px;
+  background-color: #101216;
+  color: #eceff4;
+  border: 1px solid #2d323e;
   border-radius: 2px;
-  overflow: hidden;
-}
-
-.cad-tab {
-  height: 100%;
-  padding: 0 11px;
+  padding: 0 6px;
   font-size: 11px;
-  font-weight: 500;
-  color: #8b93a6;
-  background: transparent;
-  border: none;
-  border-right: 1px solid #1e2330;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  transition: background 0.1s, color 0.1s;
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  outline: none;
+  width: 100%;
 }
-.cad-tab:last-child {
-  border-right: none;
-}
-.cad-tab:hover {
-  color: #d8dee9;
-  background: #171b26;
-}
-.cad-tab-active {
-  color: #ffffff;
-  background: #2563eb;
-  font-weight: 600;
+.cad-input:focus {
+  border-color: #d4b047;
 }
 
 .cad-btn {
-  height: 24px;
-  padding: 0 9px;
-  font-size: 11px;
-  font-weight: 500;
-  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, monospace;
-  color: #cfd6e6;
-  background: #181c28;
-  border: 1px solid #2b3245;
-  border-radius: 2px;
-  cursor: pointer;
+  height: 22px;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
+  padding: 0 7px;
+  background-color: #1e2229;
+  color: #c8d0dc;
+  border: 1px solid #2e3440;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
   text-decoration: none;
 }
 .cad-btn:hover {
-  background: #23293a;
-  border-color: #3d4760;
+  background-color: #272c36;
   color: #ffffff;
+  border-color: #3e4656;
 }
 .cad-btn-active {
-  background: #1d4ed8;
-  border-color: #3b82f6;
-  color: #ffffff;
+  background-color: #2b2618 !important;
+  color: #f3d06b !important;
+  border-color: #b59235 !important;
+}
+.cad-btn-danger {
+  background-color: #2a1619;
+  color: #f87171;
+  border-color: #5c232a;
+}
+.cad-btn-danger:hover {
+  background-color: #3d1c20;
+  color: #fca5a5;
 }
 
-.cad-workspace {
-  flex: 1;
+/* Flat Desktop CAD Mode Tabs (KiCad / Altium Style) */
+.cad-tabs {
   display: flex;
-  overflow: hidden;
-  position: relative;
+  align-items: stretch;
+  height: 32px;
+  gap: 1px;
+  flex-shrink: 0;
 }
 
+.cad-tab {
+  height: 32px;
+  padding: 0 11px;
+  background: transparent;
+  color: #8b92a2;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cad-tab:hover {
+  color: #e5e9f0;
+  background-color: #1b1e24;
+}
+.cad-tab-active {
+  color: #f3d06b;
+  background-color: #1c2026;
+  border-bottom: 2px solid #d4b047;
+}
+
+/* Workspace Middle Area (Left Toolstrip + Center Canvas + Right Dock) */
+.cad-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Left Vertical CAD Tool Strip (38px) */
 .cad-toolstrip {
-  width: 36px;
-  background: #12151e;
-  border-right: 1px solid #232836;
+  width: 38px;
+  min-width: 38px;
+  background-color: #16181d;
+  border-right: 1px solid #262a33;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 6px 0;
-  gap: 4px;
-  flex-shrink: 0;
-  z-index: 25;
+  padding: 5px 0;
+  gap: 3px;
+  z-index: 30;
 }
 
 .cad-tool-btn {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  background-color: transparent;
+  color: #8f97a8;
   border: 1px solid transparent;
   border-radius: 2px;
-  color: #949eb2;
   cursor: pointer;
   padding: 0;
+  position: relative;
 }
 .cad-tool-btn:hover {
-  background: #1c2230;
-  border-color: #2f374d;
-  color: #f0f4f8;
+  background-color: #22262e;
+  color: #eceff4;
+  border-color: #323846;
 }
 .cad-tool-btn-active {
-  background: #1e3a8a;
-  border-color: #3b82f6;
-  color: #ffffff;
+  background-color: #2b2618 !important;
+  color: #f3d06b !important;
+  border-color: #b59235 !important;
 }
 
 .cad-tool-sep {
-  width: 20px;
+  width: 22px;
   height: 1px;
-  background: #232836;
+  background-color: #262a33;
   margin: 3px 0;
 }
 
+/* Center Viewport */
 .cad-viewport {
   flex: 1;
-  height: 100%;
   position: relative;
+  background-color: #0e1013;
   overflow: hidden;
-  background: #0a0b10;
-  display: flex;
-  flex-direction: column;
 }
 
 .cad-canvas {
-  display: block;
   width: 100%;
   height: 100%;
+  display: block;
   cursor: crosshair;
 }
 
+/* Right Docked CAD Sidebar (280px) */
 .cad-sidebar {
-  width: 268px;
-  background: #12151e;
-  border-left: 1px solid #232836;
+  width: 280px;
+  min-width: 280px;
+  background-color: #16181d;
+  border-left: 1px solid #262a33;
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
-  z-index: 25;
+  overflow: hidden;
+  z-index: 30;
 }
 
 .cad-panel-header {
-  height: 26px;
-  padding: 0 10px;
-  background: #171b26;
-  border-bottom: 1px solid #232836;
-  border-top: 1px solid #232836;
+  height: 24px;
+  min-height: 24px;
+  background-color: #1c1f26;
+  border-top: 1px solid #262a33;
+  border-bottom: 1px solid #262a33;
+  padding: 0 9px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   font-size: 10px;
   font-weight: 700;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #949eb2;
+  color: #8e96a8;
 }
 .cad-panel-header:first-child {
   border-top: none;
 }
 
+/* Layer Manager Rows */
 .cad-layer-list {
-  padding: 4px 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
+  padding: 3px 0;
+  border-bottom: 1px solid #262a33;
 }
 
 .cad-layer-row {
-  height: 23px;
-  padding: 0 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-radius: 2px;
-  cursor: pointer;
+  height: 22px;
+  padding: 0 9px;
   font-size: 11px;
-  color: #d0d6e2;
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #d0d6e0;
+  cursor: pointer;
 }
 .cad-layer-row:hover {
-  background: #1a202e;
+  background-color: #1f232b;
 }
 
 .cad-layer-left {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
 }
 
 .cad-swatch {
   width: 10px;
   height: 10px;
   border-radius: 1px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   display: inline-block;
-  flex-shrink: 0;
 }
 
 .cad-layer-type {
-  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, monospace;
   font-size: 10px;
-  color: #6c768a;
+  color: #6c7486;
 }
 
+/* Property Inspector Grid */
+.cad-prop-grid {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 5px 8px;
+  align-items: center;
+  padding: 8px 10px;
+}
+
+.cad-prop-label {
+  font-size: 11px;
+  color: #8e96a8;
+  white-space: nowrap;
+}
+
+/* Bottom Docked CAD Status Bar (24px) */
 .cad-statusbar {
   height: 24px;
-  background: #0d1017;
-  border-top: 1px solid #232836;
+  min-height: 24px;
+  background-color: #121418;
+  border-top: 1px solid #262a33;
   display: flex;
   align-items: center;
-  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, monospace;
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
-  color: #b0b8c9;
-  flex-shrink: 0;
-  z-index: 30;
+  color: #b0b8c8;
+  z-index: 40;
 }
 
 .cad-status-cell {
   height: 100%;
-  padding: 0 10px;
-  border-right: 1px solid #1e2330;
   display: flex;
   align-items: center;
+  padding: 0 10px;
+  border-right: 1px solid #22262f;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .cad-status-cell-flex {
@@ -1310,34 +396,23 @@
   text-overflow: ellipsis;
 }
 
-.cad-net-hud {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 20;
-  background: rgba(15, 18, 26, 0.96);
-  border: 1px solid #2e384d;
-  border-left: 3px solid #10b981;
-  border-radius: 2px;
-  padding: 6px 10px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, monospace;
-  font-size: 11px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-}
-
+/* Data Tables (DRC & BOM) */
 .cad-table-row {
-  padding: 7px 10px;
-  border-bottom: 1px solid #1e2330;
-  background: #10131b;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid #20242d;
+  background-color: #121418;
 }
 .cad-table-row:hover {
-  background: #171c28;
+  background-color: #191d24;
 }
 
-
+input[type="checkbox"] {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: #d4b047;
+  cursor: pointer;
+}

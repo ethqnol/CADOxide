@@ -262,6 +262,201 @@ impl ParsedBoard {
             center_y: (y0 + y1) * 0.5,
         })
     }
+
+    pub fn get_primitive(&self, idx: usize) -> Option<[f32; 8]> {
+        let base = idx * FLOATS_PER_INSTANCE;
+        if base + FLOATS_PER_INSTANCE > self.instances.len() {
+            return None;
+        }
+        let s = &self.instances[base..base + FLOATS_PER_INSTANCE];
+        Some([s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]])
+    }
+
+    pub fn set_primitive(&mut self, idx: usize, data: [f32; 8]) -> bool {
+        let base = idx * FLOATS_PER_INSTANCE;
+        if base + FLOATS_PER_INSTANCE > self.instances.len() {
+            return false;
+        }
+        self.instances[base..base + FLOATS_PER_INSTANCE].copy_from_slice(&data);
+        self.rebuild_index_and_nets();
+        true
+    }
+
+    pub fn translate_primitive_in_place(&mut self, idx: usize, dx: f32, dy: f32) -> bool {
+        let base = idx * FLOATS_PER_INSTANCE;
+        if base + FLOATS_PER_INSTANCE > self.instances.len() {
+            return false;
+        }
+        self.instances[base] += dx;
+        self.instances[base + 1] += dy;
+        self.instances[base + 2] += dx;
+        self.instances[base + 3] += dy;
+        true
+    }
+
+    pub fn delete_primitive(&mut self, idx: usize) -> bool {
+        let base = idx * FLOATS_PER_INSTANCE;
+        if base + FLOATS_PER_INSTANCE > self.instances.len() {
+            return false;
+        }
+        self.instances.drain(base..base + FLOATS_PER_INSTANCE);
+        self.rebuild_index_and_nets();
+        true
+    }
+
+    pub fn add_primitive(
+        &mut self,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        w: f32,
+        h: f32,
+        layer_mask: u32,
+        net_id: u32,
+        prim_type: f32,
+    ) -> usize {
+        let packed_w = (net_id as f32) * 16.0 + prim_type;
+        let idx = self.instances.len() / FLOATS_PER_INSTANCE;
+        self.instances
+            .extend_from_slice(&[x0, y0, x1, y1, w, h, layer_mask as f32, packed_w]);
+        self.rebuild_index_and_nets();
+        idx
+    }
+
+    pub fn rebuild_index_and_nets(&mut self) {
+        self.primitive_count = self.instances.len() / FLOATS_PER_INSTANCE;
+        self.spatial_grid.clear();
+
+        for stats in self.nets.values_mut() {
+            stats.total_length_mm = 0.0;
+            stats.segment_count = 0;
+            stats.via_count = 0;
+            stats.pad_count = 0;
+        }
+
+        for (idx, chunk) in self.instances.chunks_exact(FLOATS_PER_INSTANCE).enumerate() {
+            let x0 = chunk[0];
+            let y0 = chunk[1];
+            let x1 = chunk[2];
+            let y1 = chunk[3];
+            let r = chunk[4].max(chunk[5]).max(0.25);
+            let layer_bits = chunk[6] as u32;
+            let raw_w = chunk[7];
+            let net_id = (raw_w / 16.0).floor() as u32;
+            let prim_type = (raw_w - (net_id as f32) * 16.0).round() as i32;
+
+            let min_cx = ((x0.min(x1) - r) / SPATIAL_CELL_MM).floor() as i32;
+            let max_cx = ((x0.max(x1) + r) / SPATIAL_CELL_MM).floor() as i32;
+            let min_cy = ((y0.min(y1) - r) / SPATIAL_CELL_MM).floor() as i32;
+            let max_cy = ((y0.max(y1) + r) / SPATIAL_CELL_MM).floor() as i32;
+
+            let span_x = (max_cx - min_cx).min(24);
+            let span_y = (max_cy - min_cy).min(24);
+
+            for cx in min_cx..=(min_cx + span_x) {
+                for cy in min_cy..=(min_cy + span_y) {
+                    self.spatial_grid
+                        .entry((cx, cy))
+                        .or_default()
+                        .push(idx as u32);
+                }
+            }
+
+            if net_id > 0 {
+                let entry = self.nets.entry(net_id).or_insert_with(|| NetStats {
+                    id: net_id,
+                    name: format!("Net-{}", net_id),
+                    ..Default::default()
+                });
+                let copper_mask = LAYER_F_CU | LAYER_B_CU | LAYER_IN_CU;
+                if prim_type == 0 && (layer_bits & copper_mask) != 0 {
+                    let seg_len = ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt();
+                    entry.total_length_mm += seg_len;
+                    entry.segment_count += 1;
+                } else if prim_type == 1 {
+                    entry.via_count += 1;
+                } else if prim_type >= 2 && prim_type <= 4 {
+                    entry.pad_count += 1;
+                }
+            }
+        }
+    }
+
+    pub fn export_kicad_pcb(&self) -> String {
+        let mut out = String::with_capacity(self.primitive_count * 96 + 512);
+        out.push_str("(kicad_pcb (version 20240108) (generator \"cadoxide_eda\")\n");
+        out.push_str("  (general (thickness 1.6))\n");
+        out.push_str("  (layers\n    (0 \"F.Cu\" signal)\n    (1 \"In1.Cu\" signal)\n    (31 \"B.Cu\" signal)\n    (36 \"B.SilkS\" user)\n    (37 \"F.SilkS\" user)\n    (38 \"B.Mask\" user)\n    (39 \"F.Mask\" user)\n    (44 \"Edge.Cuts\" user)\n  )\n");
+
+        let mut net_list: Vec<_> = self.nets.values().collect();
+        net_list.sort_by_key(|n| n.id);
+        out.push_str("  (net 0 \"\")\n");
+        for n in net_list {
+            if n.id > 0 {
+                out.push_str(&format!("  (net {} \"{}\")\n", n.id, n.name));
+            }
+        }
+
+        for chunk in self.instances.chunks_exact(FLOATS_PER_INSTANCE) {
+            let x0 = chunk[0];
+            let y0 = chunk[1];
+            let x1 = chunk[2];
+            let y1 = chunk[3];
+            let w = chunk[4];
+            let h = chunk[5];
+            let layer_bits = chunk[6] as u32;
+            let raw_w = chunk[7];
+            let net_id = (raw_w / 16.0).floor() as u32;
+            let prim_type = (raw_w - (net_id as f32) * 16.0).round() as i32;
+
+            let layer_str = if (layer_bits & LAYER_F_CU) != 0 {
+                "F.Cu"
+            } else if (layer_bits & LAYER_IN_CU) != 0 {
+                "In1.Cu"
+            } else if (layer_bits & LAYER_B_CU) != 0 {
+                "B.Cu"
+            } else if (layer_bits & LAYER_EDGE_CUTS) != 0 {
+                "Edge.Cuts"
+            } else if (layer_bits & LAYER_F_SILKS) != 0 {
+                "F.SilkS"
+            } else {
+                "F.Cu"
+            };
+
+            match prim_type {
+                0 => {
+                    if (layer_bits & (LAYER_F_CU | LAYER_B_CU | LAYER_IN_CU)) != 0 {
+                        out.push_str(&format!(
+                            "  (segment (start {:.4} {:.4}) (end {:.4} {:.4}) (width {:.4}) (layer \"{}\") (net {}))\n",
+                            x0, y0, x1, y1, w, layer_str, net_id
+                        ));
+                    } else {
+                        out.push_str(&format!(
+                            "  (gr_line (start {:.4} {:.4}) (end {:.4} {:.4}) (width {:.4}) (layer \"{}\"))\n",
+                            x0, y0, x1, y1, w, layer_str
+                        ));
+                    }
+                }
+                1 => {
+                    out.push_str(&format!(
+                        "  (via (at {:.4} {:.4}) (size {:.4}) (drill {:.4}) (layers \"F.Cu\" \"B.Cu\") (net {}))\n",
+                        x0, y0, w, h, net_id
+                    ));
+                }
+                8 => {
+                    let r = (w + h) * 0.25;
+                    out.push_str(&format!(
+                        "  (gr_circle (center {:.4} {:.4}) (end {:.4} {:.4}) (width {:.4}) (layer \"{}\"))\n",
+                        x0, y0, x0 + r, y0, (w - h) * 0.5, layer_str
+                    ));
+                }
+                _ => {}
+            }
+        }
+        out.push_str(")\n");
+        out
+    }
 }
 
 /// Parses a KiCad `.kicad_pcb` file in pure Rust into a flat 8-float-per-instance GPU buffer.
