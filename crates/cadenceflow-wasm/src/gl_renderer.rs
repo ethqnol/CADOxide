@@ -27,8 +27,8 @@ void main() {
   uint layer_mask = uint(a_params.z + 0.5);
   uint active_mask = uint(u_center_and_scale.w + 0.5);
 
-  // Bitmask hardware layer filter
-  if ((layer_mask & active_mask & 511u) == 0u) {
+  // Bitmask hardware layer filter (bits 0..8 + bit 12 for In1.Cu..In4.Cu)
+  if ((layer_mask & active_mask & 4607u) == 0u) {
     gl_Position = vec4(-2.0, -2.0, 0.0, 1.0);
     return;
   }
@@ -106,6 +106,8 @@ void main() {
       v_color = vec4(0.92, 0.78, 0.35, 0.95); // Via gold ring
     } else if ((layer_mask & 1u) != 0u && (active_mask & 1u) != 0u) {
       v_color = vec4(0.96, 0.62, 0.04, u_viewport_and_opacities.z); // F.Cu
+    } else if ((layer_mask & 4096u) != 0u && (active_mask & 4096u) != 0u) {
+      v_color = vec4(0.66, 0.33, 0.97, 0.85); // In1.Cu..In4.Cu (Inner Copper)
     } else if ((layer_mask & 2u) != 0u && (active_mask & 2u) != 0u) {
       v_color = vec4(0.23, 0.51, 0.96, u_viewport_and_opacities.w); // B.Cu
     } else if ((layer_mask & 8u) != 0u || (layer_mask & 16u) != 0u) {
@@ -128,6 +130,8 @@ void main() {
       z_layer = 3.8;  // F.Mask
     } else if ((layer_mask & 1u) != 0u) {
       z_layer = 2.2;  // F.Cu
+    } else if ((layer_mask & 4096u) != 0u) {
+      z_layer = 0.8;  // In1.Cu..In4.Cu
     } else if ((layer_mask & 4u) != 0u) {
       z_layer = 0.0;  // FR4 Core / Edge.Cuts
     } else if ((layer_mask & 2u) != 0u) {
@@ -288,7 +292,7 @@ impl RustGpuRenderer {
             center_mm: (130.0, 95.0),
             scale_px_per_mm: 8.0,
             bounds: [70.0, 40.0, 190.0, 150.0],
-            active_layer_mask: 0b1_1111_1111,
+            active_layer_mask: 4607,
             opacities: [0.92, 0.75, 0.85, 0.45],
             diff_mode: 0.0,
             wipe_ratio: 0.5,

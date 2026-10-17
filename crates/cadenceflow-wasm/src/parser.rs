@@ -15,6 +15,7 @@ pub const LAYER_REVIEW_PIN: u32 = 1 << 8;
 pub const LAYER_DIFF_UNCHANGED: u32 = 1 << 9;
 pub const LAYER_DIFF_REMOVED: u32 = 1 << 10;
 pub const LAYER_DIFF_ADDED: u32 = 1 << 11;
+pub const LAYER_IN_CU: u32 = 1 << 12;
 
 pub const FLOATS_PER_INSTANCE: usize = 8;
 const SPATIAL_CELL_MM: f32 = 2.5;
@@ -695,13 +696,20 @@ fn extract_single(s: &str, prefix: &str) -> Option<f32> {
 fn extract_layer_mask(s: &str) -> u32 {
     let mut mask = 0u32;
     if s.contains("\"*.Cu\"") {
-        mask |= LAYER_F_CU | LAYER_B_CU;
+        mask |= LAYER_F_CU | LAYER_B_CU | LAYER_IN_CU;
     }
     if s.contains("\"F.Cu\"") {
         mask |= LAYER_F_CU;
     }
     if s.contains("\"B.Cu\"") {
         mask |= LAYER_B_CU;
+    }
+    if s.contains("\"In1.Cu\"")
+        || s.contains("\"In2.Cu\"")
+        || s.contains("\"In3.Cu\"")
+        || s.contains("\"In4.Cu\"")
+    {
+        mask |= LAYER_IN_CU;
     }
     if s.contains("\"Edge.Cuts\"") {
         mask |= LAYER_EDGE_CUTS;
@@ -723,4 +731,43 @@ fn extract_layer_mask(s: &str) -> u32 {
     }
     mask
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_and_spatial_query() {
+        let sample_pcb = r#"
+        (kicad_pcb
+          (segment (start 100.0 80.0) (end 120.0 80.0) (width 0.25) (layer "F.Cu"))
+          (segment (start 100.0 85.0) (end 120.0 85.0) (width 0.20) (layer "In1.Cu"))
+          (via (at 110.0 80.0) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu"))
+        )
+        "#;
+        let board = parse_kicad_pcb_str(sample_pcb);
+        assert_eq!(board.primitive_count, 3);
+        let hit = board.query_nearest(105.0, 80.05, LAYER_F_CU, 1.5);
+        assert!(hit.is_some());
+        assert_eq!(hit.unwrap().kind, "Track Capsule");
+    }
+
+    #[test]
+    fn test_vector_diff_engine() {
+        let pcb_a = r#"(kicad_pcb
+            (segment (start 10 10) (end 20 10) (width 0.25) (layer "F.Cu"))
+        )"#;
+        let pcb_b = r#"(kicad_pcb
+            (segment (start 10 10) (end 20 10) (width 0.25) (layer "F.Cu"))
+            (segment (start 10 15) (end 25 15) (width 0.40) (layer "F.Cu"))
+        )"#;
+        let ba = parse_kicad_pcb_str(pcb_a);
+        let bb = parse_kicad_pcb_str(pcb_b);
+        let (_diff, added, removed, unchanged) = compute_vector_diff_boards(&ba, &bb);
+        assert_eq!(added, 1);
+        assert_eq!(removed, 0);
+        assert_eq!(unchanged, 1);
+    }
+}
+
 

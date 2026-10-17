@@ -501,6 +501,14 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                   </label>
                   <label class="flex items-center justify-between p-1.5 rounded bg-slate-950/70 border border-slate-800 cursor-pointer">
                     <span class="flex items-center space-x-2">
+                      <input type="checkbox" data-bit="4096" checked class="layer-toggle accent-purple-500" />
+                      <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+                      <span>In1..In4.Cu (Inner Cu)</span>
+                    </span>
+                    <span class="font-mono text-[10px] text-slate-400">Bit 12</span>
+                  </label>
+                  <label class="flex items-center justify-between p-1.5 rounded bg-slate-950/70 border border-slate-800 cursor-pointer">
+                    <span class="flex items-center space-x-2">
                       <input type="checkbox" data-bit="2" checked class="layer-toggle accent-blue-500" />
                       <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
                       <span>B.Cu (Bottom Copper)</span>
@@ -1175,6 +1183,7 @@ fn render_threads_sidebar(state: &Rc<RefCell<AppController>>) {
     let mut html = String::new();
     for (idx, t) in app.threads.iter().enumerate() {
         let dot_color = if t.resolved { "bg-emerald-500" } else { "bg-rose-500" };
+        let resolve_label = if t.resolved { "✓ Resolved" } else { "Resolve" };
         let body = t
             .messages
             .first()
@@ -1187,9 +1196,12 @@ fn render_threads_sidebar(state: &Rc<RefCell<AppController>>) {
                      <span class="w-2 h-2 rounded-full {dot_color}"></span>
                      <span class="text-xs font-semibold text-slate-200">{author}</span>
                    </span>
-                   <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-cyan-400 border border-slate-800">
-                     {x:.1}mm, {y:.1}mm
-                   </span>
+                   <div class="flex items-center space-x-1">
+                     <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-cyan-400 border border-slate-800">
+                       {x:.1}mm, {y:.1}mm
+                     </span>
+                     <button data-resolve-idx="{idx}" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-emerald-600 text-[10px] text-slate-300 hover:text-white">{resolve_label}</button>
+                   </div>
                  </div>
                  <p class="text-xs text-slate-300 leading-relaxed">{body}</p>
                </div>"#,
@@ -1198,6 +1210,7 @@ fn render_threads_sidebar(state: &Rc<RefCell<AppController>>) {
             author = t.author,
             x = t.x,
             y = t.y,
+            resolve_label = resolve_label,
             body = body
         ));
     }
@@ -1206,6 +1219,23 @@ fn render_threads_sidebar(state: &Rc<RefCell<AppController>>) {
     let st = state.clone();
     let cb = Closure::wrap(Box::new(move |e: Event| {
         if let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
+            if let Some(res_idx_str) = el.get_attribute("data-resolve-idx") {
+                if let Ok(idx) = res_idx_str.parse::<usize>() {
+                    {
+                        let mut app = st.borrow_mut();
+                        if let Some(thread) = app.threads.get_mut(idx) {
+                            thread.resolved = !thread.resolved;
+                            let status_str = if thread.resolved { "resolved" } else { "open" };
+                            let url = format!("/api/threads/{}/status", thread.id);
+                            let payload = serde_json::json!({ "status": status_str });
+                            post_json_fire_and_forget(&url, &payload.to_string());
+                        }
+                        app.rebuild_gpu_buffer_with_markers();
+                    }
+                    render_threads_sidebar(&st);
+                    return;
+                }
+            }
             if let Some(card) = el.closest(".thread-card").ok().flatten() {
                 if let Some(idx_str) = card.get_attribute("data-idx") {
                     if let Ok(idx) = idx_str.parse::<usize>() {
