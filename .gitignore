@@ -3,6 +3,7 @@ dist/
 target/
 server/target/
 src-tauri/target/
-.cadenceflow*
+crates/*/target/
+.cadoxide*
 *.db
 *.log

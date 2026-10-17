@@ -1,5 +1,5 @@
 [package]
-name = "cadenceflow-server"
+name = "cadoxide-server"
 version = "0.1.0"
 edition = "2021"
 

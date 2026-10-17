@@ -1,6 +1,6 @@
-# CadenceFlow (TraceHub) — 100% Pure Rust Hardware Collaboration Platform
+# CADoxide — 100% Pure Rust Hardware Collaboration Platform
 
-CadenceFlow is an open-core, dual-mode hardware design review, collaboration, and inspection platform built for ultra-high-density PCB designs. It features a **100% Pure Rust WASM frontend** with an **Instanced WebGL2/WGPU Signed Distance Field (SDF) GPU shader engine**, paired with a **distributed, broker-backed Rust Axum server** and **Tauri v2 desktop core**.
+**CADoxide** is an open-core, dual-mode hardware design review, collaboration, and inspection platform built for ultra-high-density PCB designs. It features a **100% Pure Rust WASM frontend** with an **Instanced WebGL2/WGPU Signed Distance Field (SDF) GPU shader engine**, paired with a **distributed, broker-backed Rust Axum server** and **Tauri v2 desktop core**.
 
 All JavaScript/TypeScript and React layers have been completely eliminated. The entire pipeline—from KiCad S-expression parsing and geometric vector diffing to GPU draw dispatch, DOM state management, and redlining threads—runs in compiled native Rust and WebAssembly.
 
@@ -11,7 +11,7 @@ All JavaScript/TypeScript and React layers have been completely eliminated. The 
 ```
 +-----------------------------------------------------------------------------------------------+
 |                                     100% PURE RUST FRONTEND                                   |
-|                               (crates/cadenceflow-wasm -> WebAssembly)                        |
+|                                (crates/cadoxide-wasm -> WebAssembly)                          |
 |                                                                                               |
 |  * Framework: 100% Pure Rust + web-sys / js-sys (Zero JS/TS application code)                |
 |  * GPU Engine: Instanced WebGL2 SDF Shader Engine (1 Draw Call for all layers/vias/pads/pins)  |
@@ -122,9 +122,9 @@ All rendering is performed in **a single instanced draw call** (`gl.draw_arrays_
 ## Repository Structure
 
 ```
-TraceHub/
+CADoxide/
 ├── crates/
-│   └── cadenceflow-wasm/        # 100% Pure Rust WASM Frontend & GPU Shader Engine
+│   └── cadoxide-wasm/           # 100% Pure Rust WASM Frontend & GPU Shader Engine
 │       ├── Cargo.toml           # Configured for wasm32-unknown-unknown (zero JS dependencies)
 │       └── src/
 │           ├── gl_renderer.rs   # WebGL2 Instanced SDF Engine, LOD culling, 3D orbit
@@ -147,8 +147,8 @@ TraceHub/
 │   ├── index.html               # Pure-Rust WASM bootstrapper (zero React/JS)
 │   ├── styles.css               # Pre-compiled standalone Tailwind CSS
 │   ├── wasm/                    # Compiled release WebAssembly artifacts
-│   │   ├── cadenceflow_wasm_bg.wasm (250 KB)
-│   │   └── cadenceflow_wasm.js
+│   │   ├── cadoxide_wasm_bg.wasm (250 KB)
+│   │   └── cadoxide_wasm.js
 │   └── samples/                 # KiCad sample boards, SVGs, DRC reports, and 3D VRML models
 │       ├── complex_hierarchy/
 │       ├── complex_hierarchy_revB/
@@ -176,8 +176,8 @@ npm run build:wasm
 ```
 *(Or directly via cargo:)*
 ```bash
-cargo build --manifest-path crates/cadenceflow-wasm/Cargo.toml --target wasm32-unknown-unknown --release
-wasm-bindgen --target web --no-typescript --out-dir public/wasm crates/cadenceflow-wasm/target/wasm32-unknown-unknown/release/cadenceflow_wasm.wasm
+cargo build --manifest-path crates/cadoxide-wasm/Cargo.toml --target wasm32-unknown-unknown --release
+wasm-bindgen --target web --no-typescript --out-dir public/wasm crates/cadoxide-wasm/target/wasm32-unknown-unknown/release/cadoxide_wasm.wasm
 ```
 
 ### 2. Run the Rust Axum Server
@@ -191,7 +191,7 @@ Open **`http://localhost:8080`** in your browser.
 ### 3. Run Automated Rust Unit Tests
 Execute the unit tests verifying KiCad parsing, 4-layer copper extraction, $O(1)$ spatial grid lookups, and geometric vector diffs:
 ```bash
-cargo test --manifest-path crates/cadenceflow-wasm/Cargo.toml --lib
+cargo test --manifest-path crates/cadoxide-wasm/Cargo.toml --lib
 ```
 
 ### 4. Deploy Full Cloud Microservices

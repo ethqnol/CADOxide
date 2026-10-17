@@ -354,7 +354,7 @@ fn default_parts_catalog() -> Vec<PartLibraryEntry> {
 
 /// Automatically boots the 100% Pure Rust Frontend when the WASM module is loaded
 #[wasm_bindgen(start)]
-pub fn start_cadenceflow_app() {
+pub fn start_cadoxide_app() {
     let window = match web_sys::window() {
         Some(w) => w,
         None => return,
@@ -446,7 +446,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               </div>
               <div>
                 <div class="flex items-center space-x-2">
-                  <span class="font-bold text-slate-100 tracking-tight text-base">CadenceFlow</span>
+                  <span class="font-bold text-slate-100 tracking-tight text-base">CADoxide</span>
                   <span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold">
                     100% Pure Rust + WASM GPU
                   </span>
@@ -1407,7 +1407,7 @@ fn sync_backend_telemetry_and_parts(state: Rc<RefCell<AppController>>) {
             let node = val
                 .get("node_id")
                 .and_then(|v| v.as_str())
-                .unwrap_or("cadence-node-primary");
+                .unwrap_or("cadoxide-node-primary");
             let workers = val
                 .get("worker_pool")
                 .and_then(|w| w.get("max_workers"))

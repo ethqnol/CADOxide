@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "cadenceflow",
+  "productName": "cadoxide",
   "version": "2.0.0",
-  "identifier": "io.cadenceflow.desktop",
+  "identifier": "io.cadoxide.desktop",
   "build": {
     "frontendDist": "../public",
     "devUrl": "http://localhost:8080",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "CadenceFlow — 100% Pure Rust WASM + Instanced GPU SDF Engine",
+        "title": "CADoxide — 100% Pure Rust WASM + Instanced GPU SDF Engine",
         "width": 1440,
         "height": 900,
         "resizable": true,

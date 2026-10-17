@@ -1,10 +1,10 @@
 {
-  "name": "tracehub",
+  "name": "cadoxide",
   "version": "2.0.0",
   "type": "module",
-  "description": "CadenceFlow — 100% Pure Rust WASM + Instanced GPU SDF Hardware Collaboration Platform",
+  "description": "CADoxide — 100% Pure Rust WASM + Instanced GPU SDF Hardware Collaboration Platform",
   "scripts": {
-    "build:wasm": "cargo build --offline --manifest-path crates/cadenceflow-wasm/Cargo.toml --target wasm32-unknown-unknown --release && wasm-bindgen --target web --no-typescript --out-dir public/wasm crates/cadenceflow-wasm/target/wasm32-unknown-unknown/release/cadenceflow_wasm.wasm",
+    "build:wasm": "cargo build --offline --manifest-path crates/cadoxide-wasm/Cargo.toml --target wasm32-unknown-unknown --release && wasm-bindgen --target web --no-typescript --out-dir public/wasm crates/cadoxide-wasm/target/wasm32-unknown-unknown/release/cadoxide_wasm.wasm",
     "build": "npm run build:wasm",
     "server": "cargo run --offline --manifest-path server/Cargo.toml",
     "dev": "cargo run --offline --manifest-path server/Cargo.toml"

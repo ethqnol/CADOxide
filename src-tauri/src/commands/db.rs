@@ -29,7 +29,7 @@ pub struct ReviewMessage {
 
 #[command]
 pub async fn get_review_threads(_project_path: String) -> Result<Vec<ReviewThread>, String> {
-    // In Tauri, this connects to the local SQLite database file at .cadenceflow/reviews.db
+    // In Tauri, this connects to the local SQLite database file at .cadoxide/reviews.db
     let now = chrono::Utc::now().to_rfc3339();
     Ok(vec![
         ReviewThread {

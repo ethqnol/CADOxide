@@ -1,8 +1,8 @@
 /**
  * Automatically boots the 100% Pure Rust Frontend when the WASM module is loaded
  */
-export function start_cadenceflow_app() {
-    wasm.start_cadenceflow_app();
+export function start_cadoxide_app() {
+    wasm.start_cadoxide_app();
 }
 function __wbg_get_imports() {
     const import0 = {
@@ -436,7 +436,7 @@ function __wbg_get_imports() {
     };
     return {
         __proto__: null,
-        "./cadenceflow_wasm_bg.js": import0,
+        "./cadoxide_wasm_bg.js": import0,
     };
 }
 
@@ -690,7 +690,7 @@ async function __wbg_init(module_or_path) {
     }
 
     if (module_or_path === undefined) {
-        module_or_path = new URL('cadenceflow_wasm_bg.wasm', import.meta.url);
+        module_or_path = new URL('cadoxide_wasm_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 

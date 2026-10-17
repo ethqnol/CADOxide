@@ -12,15 +12,15 @@ services:
       - api
 
   api:
-    image: ghcr.io/cadenceflow/server:latest
+    image: ghcr.io/cadoxide/server:latest
     build:
       context: ./server
       dockerfile: Dockerfile
     restart: always
     environment:
-      - DATABASE_URL=postgres://cadence:flowpass@postgres:5432/cadenceflow
+      - DATABASE_URL=postgres://cadoxide:oxidepass@postgres:5432/cadoxide
       - S3_ENDPOINT=http://minio:9000
-      - S3_BUCKET=cadenceflow-assets
+      - S3_BUCKET=cadoxide-assets
       - S3_ACCESS_KEY=minioadmin
       - S3_SECRET_KEY=minioadmin
       - REDIS_URL=redis://redis:6379
@@ -34,7 +34,7 @@ services:
       - minio
 
   worker:
-    image: ghcr.io/cadenceflow/kicad-worker:latest
+    image: ghcr.io/cadoxide/kicad-worker:latest
     restart: always
     # Horizontally scalable headless KiCad consumer pool:
     # docker compose up -d --scale worker=4
@@ -53,9 +53,9 @@ services:
     image: postgres:16-alpine
     restart: always
     environment:
-      - POSTGRES_USER=cadence
-      - POSTGRES_PASSWORD=flowpass
-      - POSTGRES_DB=cadenceflow
+      - POSTGRES_USER=cadoxide
+      - POSTGRES_PASSWORD=oxidepass
+      - POSTGRES_DB=cadoxide
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d:ro

@@ -384,7 +384,7 @@ async fn get_version(State(state): State<AppState>) -> impl IntoResponse {
                 "available": true,
                 "version": ver,
                 "node_id": state.node_id,
-                "system": "CadenceFlow Distributed Axum Engine v1.2",
+                "system": "CADoxide Distributed Axum Engine v1.2",
                 "dual_mode": "Local & Remote Load-Balanced"
             }))
         }
@@ -392,7 +392,7 @@ async fn get_version(State(state): State<AppState>) -> impl IntoResponse {
             "available": false,
             "error": e.to_string(),
             "node_id": state.node_id,
-            "system": "CadenceFlow Distributed Axum Engine v1.2"
+            "system": "CADoxide Distributed Axum Engine v1.2"
         })),
     }
 }
@@ -499,7 +499,7 @@ async fn render_pcb(
         ));
     }
 
-    let out_dir = base_path.join(".cadenceflow_renders");
+    let out_dir = base_path.join(".cadoxide_renders");
     std::fs::create_dir_all(&out_dir)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -627,7 +627,7 @@ async fn execute_drc(
         base_path.join(&payload.pcb_filename)
     };
 
-    let report_path = base_path.join(".cadenceflow_drc.json");
+    let report_path = base_path.join(".cadoxide_drc.json");
 
     let output = Command::new("kicad-cli")
         .env("XDG_CONFIG_HOME", "/tmp/kicad_cfg")
@@ -1053,12 +1053,12 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "cadenceflow_server=info,tower_http=info".into()),
+                .unwrap_or_else(|_| "cadoxide_server=info,tower_http=info".into()),
         )
         .init();
 
     let workspace_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let db_path = workspace_root.join(".cadenceflow_local.db");
+    let db_path = workspace_root.join(".cadoxide_local.db");
 
     let conn = Connection::open(&db_path).expect("Failed to open SQLite database");
     init_db(&conn).expect("Failed to initialize database tables");
@@ -1070,7 +1070,7 @@ async fn main() {
         }
     });
 
-    let node_id = std::env::var("NODE_ID").unwrap_or_else(|_| "cadence-node-primary".to_string());
+    let node_id = std::env::var("NODE_ID").unwrap_or_else(|_| "cadoxide-node-primary".to_string());
 
     let state = AppState {
         db: Arc::new(Mutex::new(conn)),
@@ -1112,7 +1112,7 @@ async fn main() {
 
     let port = 8080;
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
-    info!("CadenceFlow Server listening on http://{}", addr);
+    info!("CADoxide Server listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

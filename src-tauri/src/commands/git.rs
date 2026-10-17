@@ -31,14 +31,14 @@ pub async fn get_git_revisions(repo_path: String) -> Result<Vec<GitCommit>, Stri
             GitCommit {
                 hash: "a1b2c3d4e5f67890123456789abcdef012345678".to_string(),
                 short_hash: "a1b2c3d".to_string(),
-                author: "Hardware Eng <hw@cadenceflow.io>".to_string(),
+                author: "Hardware Eng <hw@cadoxide.io>".to_string(),
                 message: "feat(power): Route 3.3V LDO regulator & decouple caps".to_string(),
                 date: "2026-10-17T12:00:00Z".to_string(),
             },
             GitCommit {
                 hash: "b2c3d4e5f67890123456789abcdef0123456789".to_string(),
                 short_hash: "b2c3d4e".to_string(),
-                author: "Hardware Eng <hw@cadenceflow.io>".to_string(),
+                author: "Hardware Eng <hw@cadoxide.io>".to_string(),
                 message: "feat(mcu): Initial component placement and MCU fanout".to_string(),
                 date: "2026-10-16T18:30:00Z".to_string(),
             },

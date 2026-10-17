@@ -56,7 +56,7 @@ pub async fn render_pcb_layers(
         base_path.join(&pcb_filename)
     };
 
-    let out_dir = base_path.join(".cadenceflow").join("renders");
+    let out_dir = base_path.join(".cadoxide").join("renders");
 
     tokio::fs::create_dir_all(&out_dir)
         .await
@@ -139,7 +139,7 @@ pub async fn execute_drc(project_path: String, pcb_filename: String) -> Result<D
         base_path.join(&pcb_filename)
     };
 
-    let report_path = base_path.join(".cadenceflow").join("drc_report.json");
+    let report_path = base_path.join(".cadoxide").join("drc_report.json");
 
     if let Some(parent) = report_path.parent() {
         tokio::fs::create_dir_all(parent)
@@ -235,7 +235,7 @@ pub async fn render_schematic_sheets(
         base_path.join(&sch_filename)
     };
 
-    let out_dir = base_path.join(".cadenceflow").join("sheets");
+    let out_dir = base_path.join(".cadoxide").join("sheets");
     tokio::fs::create_dir_all(&out_dir)
         .await
         .map_err(|e| e.to_string())?;
@@ -282,7 +282,7 @@ pub async fn export_pcb_vrml_3d(
         base_path.join(&pcb_filename)
     };
 
-    let out_path = base_path.join(".cadenceflow").join("board.wrl");
+    let out_path = base_path.join(".cadoxide").join("board.wrl");
     if let Some(parent) = out_path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
