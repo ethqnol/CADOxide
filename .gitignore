@@ -1,0 +1,8 @@
+node_modules/
+dist/
+target/
+server/target/
+src-tauri/target/
+.cadenceflow*
+*.db
+*.log

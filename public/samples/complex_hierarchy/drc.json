@@ -1,0 +1,1081 @@
+{
+    "$schema": "https://schemas.kicad.org/drc.v1.json",
+    "coordinate_units": "mm",
+    "date": "2026-10-17T13:59:10",
+    "ignored_checks": [
+        {
+            "description": "Footprint has no courtyard defined",
+            "key": "missing_courtyard"
+        },
+        {
+            "description": "Track endpoint not centered on via",
+            "key": "track_not_centered_on_via"
+        },
+        {
+            "description": "Tuning profile track geometries",
+            "key": "tuning_profile_track_geometries"
+        },
+        {
+            "description": "Footprint doesn't match symbol's footprint filters",
+            "key": "footprint_filters_mismatch"
+        },
+        {
+            "description": "Footprint component type doesn't match footprint pads",
+            "key": "footprint_type_mismatch"
+        }
+    ],
+    "included_severities": [
+        "error",
+        "warning",
+        "exclusion"
+    ],
+    "kicad_version": "10.0.7",
+    "schematic_parity": [],
+    "source": "complex_hierarchy.kicad_pcb",
+    "unconnected_items": [],
+    "violations": [
+        {
+            "description": "Board edge clearance violation (board setup constraints edge clearance 0.5000 mm; actual 0.4920 mm)",
+            "items": [
+                {
+                    "description": "Segment on Edge.Cuts",
+                    "pos": {
+                        "x": 87.9,
+                        "y": 131.826
+                    },
+                    "uuid": "119e28c8-23b3-461d-a622-75ce1a568f5c"
+                },
+                {
+                    "description": "Zone [GND] on bottom_copper, priority 0",
+                    "pos": {
+                        "x": 187.325,
+                        "y": 131.572
+                    },
+                    "uuid": "00000000-0000-0000-0000-00004ae6d930"
+                }
+            ],
+            "severity": "error",
+            "type": "copper_edge_clearance"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint C104",
+                    "pos": {
+                        "x": 126.619,
+                        "y": 60.706
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005592cf15"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint C101",
+                    "pos": {
+                        "x": 121.793,
+                        "y": 60.579
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005592cf60"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint C105",
+                    "pos": {
+                        "x": 139.7,
+                        "y": 77.216
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005592cf70"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint C103",
+                    "pos": {
+                        "x": 160.02,
+                        "y": 78.359
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005592cf7f"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint Q201",
+                    "pos": {
+                        "x": 131.445,
+                        "y": 115.316
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005592d065"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint Q203",
+                    "pos": {
+                        "x": 151.765,
+                        "y": 123.825
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005592d081"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint Q301",
+                    "pos": {
+                        "x": 131.445,
+                        "y": 88.646
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005592d09d"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint Q302",
+                    "pos": {
+                        "x": 150.495,
+                        "y": 89.916
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005592d0ab"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint Q303",
+                    "pos": {
+                        "x": 151.003,
+                        "y": 100.965
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005592d0b9"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint Q304",
+                    "pos": {
+                        "x": 129.794,
+                        "y": 96.52
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005592d0c7"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint RV201",
+                    "pos": {
+                        "x": 93.345,
+                        "y": 125.476
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005592d227"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint RV301",
+                    "pos": {
+                        "x": 93.345,
+                        "y": 100.076
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005592d22e"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint U101",
+                    "pos": {
+                        "x": 124.206,
+                        "y": 70.866
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005592d247"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R312",
+                    "pos": {
+                        "x": 126.111,
+                        "y": 94.996
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587ced"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R202",
+                    "pos": {
+                        "x": 109.855,
+                        "y": 110.236
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587d03"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R308",
+                    "pos": {
+                        "x": 125.603,
+                        "y": 101.346
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587d19"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R302",
+                    "pos": {
+                        "x": 110.617,
+                        "y": 82.296
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587d2f"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R306",
+                    "pos": {
+                        "x": 173.355,
+                        "y": 91.186
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587d45"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R305",
+                    "pos": {
+                        "x": 137.795,
+                        "y": 81.026
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587d5b"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R304",
+                    "pos": {
+                        "x": 145.415,
+                        "y": 86.106
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587d71"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R209",
+                    "pos": {
+                        "x": 156.21,
+                        "y": 116.713
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587d87"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R213",
+                    "pos": {
+                        "x": 102.87,
+                        "y": 126.746
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587d9d"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R211",
+                    "pos": {
+                        "x": 144.399,
+                        "y": 126.873
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587db3"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R212",
+                    "pos": {
+                        "x": 134.493,
+                        "y": 120.142
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587dc9"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R208",
+                    "pos": {
+                        "x": 126.365,
+                        "y": 128.016
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587ddf"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R203",
+                    "pos": {
+                        "x": 109.855,
+                        "y": 112.776
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587df5"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R303",
+                    "pos": {
+                        "x": 102.997,
+                        "y": 84.963
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587e0b"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R313",
+                    "pos": {
+                        "x": 102.235,
+                        "y": 102.616
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587e21"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R204",
+                    "pos": {
+                        "x": 146.685,
+                        "y": 108.966
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587e37"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R205",
+                    "pos": {
+                        "x": 122.555,
+                        "y": 115.316
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587e4d"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R206",
+                    "pos": {
+                        "x": 173.355,
+                        "y": 119.126
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587e63"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R310",
+                    "pos": {
+                        "x": 161.29,
+                        "y": 89.916
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587e79"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R307",
+                    "pos": {
+                        "x": 173.355,
+                        "y": 97.536
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587e8f"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R210",
+                    "pos": {
+                        "x": 160.02,
+                        "y": 116.586
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587ea5"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R207",
+                    "pos": {
+                        "x": 173.355,
+                        "y": 122.936
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587ebb"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R301",
+                    "pos": {
+                        "x": 110.363,
+                        "y": 78.74
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587ed1"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R201",
+                    "pos": {
+                        "x": 109.855,
+                        "y": 107.061
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587ee7"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R309",
+                    "pos": {
+                        "x": 156.845,
+                        "y": 89.916
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587efd"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint R311",
+                    "pos": {
+                        "x": 141.605,
+                        "y": 101.346
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587f13"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint U301",
+                    "pos": {
+                        "x": 107.315,
+                        "y": 96.266
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587f29"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint U102",
+                    "pos": {
+                        "x": 145.415,
+                        "y": 72.136
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587f44"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint U201",
+                    "pos": {
+                        "x": 107.315,
+                        "y": 124.206
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a587f5f"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint C304",
+                    "pos": {
+                        "x": 138.049,
+                        "y": 104.14
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a5882b0"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint C303",
+                    "pos": {
+                        "x": 113.792,
+                        "y": 84.836
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a5882c4"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint C301",
+                    "pos": {
+                        "x": 118.745,
+                        "y": 81.407
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a5882d8"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint C204",
+                    "pos": {
+                        "x": 138.176,
+                        "y": 130.048
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a5882ec"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint C202",
+                    "pos": {
+                        "x": 113.665,
+                        "y": 106.045
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a588300"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint C302",
+                    "pos": {
+                        "x": 113.792,
+                        "y": 77.978
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a588314"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint C203",
+                    "pos": {
+                        "x": 113.665,
+                        "y": 112.776
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a588328"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint C201",
+                    "pos": {
+                        "x": 118.618,
+                        "y": 109.474
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a58833c"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint D101",
+                    "pos": {
+                        "x": 116.078,
+                        "y": 68.326
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a5986b9"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint D301",
+                    "pos": {
+                        "x": 125.095,
+                        "y": 78.867
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a5986d7"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint D203",
+                    "pos": {
+                        "x": 144.78,
+                        "y": 123.571
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a5986f5"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint D201",
+                    "pos": {
+                        "x": 127.635,
+                        "y": 105.918
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a598713"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint D202",
+                    "pos": {
+                        "x": 127.635,
+                        "y": 108.966
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a598731"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint D304",
+                    "pos": {
+                        "x": 141.605,
+                        "y": 97.536
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a59874f"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint D302",
+                    "pos": {
+                        "x": 132.715,
+                        "y": 82.296
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a59876d"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint D204",
+                    "pos": {
+                        "x": 140.97,
+                        "y": 123.571
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a59878b"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint D303",
+                    "pos": {
+                        "x": 145.415,
+                        "y": 97.536
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a5987a9"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint P101",
+                    "pos": {
+                        "x": 94.9,
+                        "y": 56.9
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a611d38"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint P102",
+                    "pos": {
+                        "x": 94.8,
+                        "y": 69.4
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a611d63"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint P201",
+                    "pos": {
+                        "x": 94.615,
+                        "y": 111.633
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a611d8e"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint P202",
+                    "pos": {
+                        "x": 181.1925,
+                        "y": 112.4575
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a611db9"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint P301",
+                    "pos": {
+                        "x": 94.9,
+                        "y": 85.0
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a611de4"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint P302",
+                    "pos": {
+                        "x": 181.2,
+                        "y": 86.3
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005a611e0f"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint Q202",
+                    "pos": {
+                        "x": 149.225,
+                        "y": 115.062
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005e0cceed"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint Q204",
+                    "pos": {
+                        "x": 130.556,
+                        "y": 125.73
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005e0ccf43"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'complex_hierarchy'",
+            "items": [
+                {
+                    "description": "Footprint C102",
+                    "pos": {
+                        "x": 117.348,
+                        "y": 73.406
+                    },
+                    "uuid": "00000000-0000-0000-0000-00005e0d2923"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        }
+    ]
+}
