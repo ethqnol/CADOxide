@@ -2,12 +2,15 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CadenceFlow - Hardware Collaboration Platform</title>
+    <title>CadenceFlow — 100% Pure Rust WASM + Instanced GPU SDF Engine</title>
+    <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body class="bg-slate-950 text-slate-100 antialiased overflow-hidden select-none">
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+  <body class="bg-slate-950 text-slate-100 antialiased overflow-hidden select-none m-0 p-0">
+    <div id="root" class="h-screen w-screen overflow-hidden"></div>
+    <script type="module">
+      import init from '/wasm/cadenceflow_wasm.js';
+      init('/wasm/cadenceflow_wasm_bg.wasm');
+    </script>
   </body>
 </html>

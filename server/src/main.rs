@@ -833,6 +833,7 @@ async fn main() {
             "/samples",
             ServeDir::new(workspace_root.join("public/samples")),
         )
+        .fallback_service(ServeDir::new(workspace_root.join("public")))
         .layer(cors)
         .with_state(state);
 
