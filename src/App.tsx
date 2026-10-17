@@ -218,6 +218,7 @@ export function App() {
               onDropPin={handleDropPin}
               activeLayer={activeLayer}
               setActiveLayer={setActiveLayer}
+              pcbSamplePath={`/samples/${selectedProject.sampleDir}/${selectedProject.pcbFile}`}
             />
 
             {isReviewPanelOpen && (

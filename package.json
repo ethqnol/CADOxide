@@ -6,7 +6,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build:wasm": "cargo build --manifest-path crates/cadenceflow-wasm/Cargo.toml --target wasm32-unknown-unknown --release && cp crates/cadenceflow-wasm/target/wasm32-unknown-unknown/release/cadenceflow_wasm.wasm public/wasm/cadenceflow_wasm.wasm",
+    "build": "npm run build:wasm && tsc && vite build",
     "preview": "vite preview",
     "server": "cargo run --manifest-path server/Cargo.toml",
     "tauri": "tauri"
