@@ -53,6 +53,10 @@ features = [
   "FileReader",
   "DragEvent",
   "DataTransfer",
+  "WebSocket",
+  "BinaryType",
+  "MessageEvent",
+  "Location",
 ]
 
 [profile.release]

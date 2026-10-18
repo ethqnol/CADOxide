@@ -1,10 +1,15 @@
 use axum::{
-    extract::{Path, State},
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Path, State,
+    },
     http::{header, Method, StatusCode},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
+use futures_util::{sink::SinkExt, stream::StreamExt};
+use tokio::sync::broadcast;
 use chrono::Utc;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
@@ -49,6 +54,7 @@ struct AppState {
     cache_misses: Arc<AtomicU64>,
     jobs_completed: Arc<AtomicU64>,
     node_id: String,
+    collab_tx: Arc<broadcast::Sender<String>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -1072,6 +1078,9 @@ async fn main() {
 
     let node_id = std::env::var("NODE_ID").unwrap_or_else(|_| "cadoxide-node-primary".to_string());
 
+    let (collab_tx, _) = broadcast::channel::<String>(256);
+    let collab_tx = Arc::new(collab_tx);
+
     let state = AppState {
         db: Arc::new(Mutex::new(conn)),
         workspace_root: workspace_root.clone(),
@@ -1084,6 +1093,7 @@ async fn main() {
         cache_misses: Arc::new(AtomicU64::new(0)),
         jobs_completed: Arc::new(AtomicU64::new(0)),
         node_id,
+        collab_tx,
     };
 
     let cors = CorsLayer::new()
@@ -1102,6 +1112,7 @@ async fn main() {
         .route("/api/threads", get(get_threads).post(create_thread))
         .route("/api/threads/:id/status", post(update_thread_status))
         .route("/api/messages", post(add_message))
+        .route("/api/collab/ws", get(collab_ws_handler))
         .nest_service(
             "/samples",
             ServeDir::new(workspace_root.join("public/samples")),
@@ -1116,4 +1127,38 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn collab_ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_collab_socket(socket, state))
+}
+
+async fn handle_collab_socket(socket: WebSocket, state: AppState) {
+    let (mut sender, mut receiver) = socket.split();
+    let mut rx = state.collab_tx.subscribe();
+    let tx = state.collab_tx.clone();
+
+    let mut send_task = tokio::spawn(async move {
+        while let Ok(msg) = rx.recv().await {
+            if sender.send(Message::Text(msg)).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    let mut recv_task = tokio::spawn(async move {
+        while let Some(Ok(msg)) = receiver.next().await {
+            if let Message::Text(text) = msg {
+                let _ = tx.send(text);
+            }
+        }
+    });
+
+    tokio::select! {
+        _ = (&mut send_task) => recv_task.abort(),
+        _ = (&mut recv_task) => send_task.abort(),
+    };
 }

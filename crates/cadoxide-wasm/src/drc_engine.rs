@@ -346,3 +346,129 @@ pub fn run_full_drc(
 
     violations
 }
+
+/// Fast O(1) pre-flight online DRC verification for a single candidate track segment.
+/// Returns Ok(()) if the segment meets clearance rules, or Err(DrcViolation) if it causes a short/clearance conflict.
+pub fn validate_track_segment(
+    board: &ParsedBoard,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    width: f32,
+    layer_mask: u32,
+    net_id: u32,
+    min_clearance_mm: f32,
+) -> Result<(), DrcViolation> {
+    let copper_mask = layer_mask & (LAYER_F_CU | LAYER_B_CU | LAYER_IN1_CU | LAYER_IN2_CU);
+    if copper_mask == 0 {
+        return Ok(());
+    }
+
+    let safe_dist = width * 0.5 + min_clearance_mm;
+    let min_x = x0.min(x1) - safe_dist - 0.5;
+    let max_x = x0.max(x1) + safe_dist + 0.5;
+    let min_y = y0.min(y1) - safe_dist - 0.5;
+    let max_y = y0.max(y1) + safe_dist + 0.5;
+
+    let min_cx = (min_x / SPATIAL_CELL_MM).floor() as i32;
+    let max_cx = (max_x / SPATIAL_CELL_MM).floor() as i32;
+    let min_cy = (min_y / SPATIAL_CELL_MM).floor() as i32;
+    let max_cy = (max_y / SPATIAL_CELL_MM).floor() as i32;
+
+    let seg_len_sq = (x1 - x0).powi(2) + (y1 - y0).powi(2);
+
+    for cx in min_cx..=max_cx {
+        for cy in min_cy..=max_cy {
+            if let Some(indices) = board.spatial_grid.get(&(cx, cy)) {
+                for &idx_u32 in indices {
+                    let idx = idx_u32 as usize;
+                    let base = idx * FLOATS_PER_INSTANCE;
+                    if base + FLOATS_PER_INSTANCE > board.instances.len() {
+                        continue;
+                    }
+                    let chunk = &board.instances[base..base + FLOATS_PER_INSTANCE];
+                    let prim_layer = chunk[6] as u32;
+                    if (prim_layer & copper_mask) == 0 {
+                        continue;
+                    }
+                    let raw_w = chunk[7];
+                    let prim_net = (raw_w / 16.0).floor() as u32;
+                    if prim_net == net_id && net_id > 0 {
+                        continue; // same electrical net
+                    }
+
+                    let ox0 = chunk[0];
+                    let oy0 = chunk[1];
+                    let ox1 = chunk[2];
+                    let oy1 = chunk[3];
+                    let ow = chunk[4];
+                    let oh = chunk[5];
+                    let other_rad = ow.max(oh) * 0.5;
+
+                    let ocx = (ox0 + ox1) * 0.5;
+                    let ocy = (oy0 + oy1) * 0.5;
+
+                    // Distance from obstacle center to candidate line segment
+                    let d = if seg_len_sq < 1e-6 {
+                        ((ocx - x0).powi(2) + (ocy - y0).powi(2)).sqrt()
+                    } else {
+                        let t = (((ocx - x0) * (x1 - x0) + (ocy - y0) * (y1 - y0)) / seg_len_sq).clamp(0.0, 1.0);
+                        let px = x0 + t * (x1 - x0);
+                        let py = y0 + t * (y1 - y0);
+                        ((ocx - px).powi(2) + (ocy - py).powi(2)).sqrt()
+                    };
+
+                    let edge_clearance = d - other_rad - (width * 0.5);
+                    if edge_clearance < 0.02 {
+                        let other_net_name = board.nets.get(&prim_net).map(|n| n.name.as_str()).unwrap_or("Net-?");
+                        return Err(DrcViolation {
+                            id: 0,
+                            rule_type: "Short".to_string(),
+                            severity: "error".to_string(),
+                            title: format!("Electrical Short with '{}'", other_net_name),
+                            details: format!("Track segment touches copper of Net '{}' at ({:.2}, {:.2}).", other_net_name, ocx, ocy),
+                            x: ocx,
+                            y: ocy,
+                            layer_name: "Copper".to_string(),
+                            layer_mask: copper_mask,
+                            measured_val: 0.0,
+                            required_val: min_clearance_mm,
+                        });
+                    } else if edge_clearance < min_clearance_mm {
+                        let other_net_name = board.nets.get(&prim_net).map(|n| n.name.as_str()).unwrap_or("Net-?");
+                        return Err(DrcViolation {
+                            id: 0,
+                            rule_type: "Clearance".to_string(),
+                            severity: "error".to_string(),
+                            title: format!("Clearance violation ({:.3} mm < {:.3} mm)", edge_clearance, min_clearance_mm),
+                            details: format!("Track segment is too close to Net '{}' at ({:.2}, {:.2}).", other_net_name, ocx, ocy),
+                            x: ocx,
+                            y: ocy,
+                            layer_name: "Copper".to_string(),
+                            layer_mask: copper_mask,
+                            measured_val: edge_clearance,
+                            required_val: min_clearance_mm,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Fast pre-flight verification for placing a via at (x, y).
+pub fn validate_via_drop(
+    board: &ParsedBoard,
+    x: f32,
+    y: f32,
+    size: f32,
+    net_id: u32,
+    min_clearance_mm: f32,
+) -> Result<(), DrcViolation> {
+    let all_copper = LAYER_F_CU | LAYER_B_CU | LAYER_IN1_CU | LAYER_IN2_CU;
+    validate_track_segment(board, x, y, x, y, size, all_copper, net_id, min_clearance_mm)
+}
+

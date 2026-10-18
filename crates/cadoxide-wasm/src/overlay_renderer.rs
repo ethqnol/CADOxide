@@ -22,6 +22,8 @@ pub struct OverlayConfig<'a> {
     pub is_zone_preview: bool,
     pub is_keepout_preview: bool,
     pub is_dragging: bool,
+    pub clearance_halo: Option<((f32, f32), f32)>,
+    pub peer_cursors: &'a [crate::crdt_sync::PeerCursor],
 }
 
 fn set_prop(ctx: &CanvasRenderingContext2d, key: &str, val: &str) {
@@ -589,5 +591,55 @@ pub fn render_cad_overlay(
         ctx.move_to(cx, 0.0);
         ctx.line_to(cx, h_f64);
         ctx.stroke();
+    }
+
+    // ========================================================================
+    // 8. Dynamic Clearance Conflict Halo (Online DRC Guard)
+    // ========================================================================
+    if let Some(((hx, hy), radius_mm)) = cfg.clearance_halo {
+        let (hcx, hcy) = renderer.board_mm_to_device_px(hx, hy, 2.5);
+        let rad_px = (radius_mm as f64) * renderer.scale_px_per_mm as f64;
+        if rad_px > 1.5 {
+            set_prop(&ctx, "strokeStyle", "rgba(239, 68, 68, 0.85)");
+            set_prop(&ctx, "fillStyle", "rgba(239, 68, 68, 0.18)");
+            set_num_prop(&ctx, "lineWidth", 1.8);
+            ctx.begin_path();
+            let _ = ctx.arc(hcx, hcy, rad_px, 0.0, std::f64::consts::TAU);
+            ctx.fill();
+            ctx.stroke();
+        }
+    }
+
+    // ========================================================================
+    // 9. Real-Time Multi-Engineer Peer Cursors & Presence Badges
+    // ========================================================================
+    for peer in cfg.peer_cursors {
+        let (px, py) = renderer.board_mm_to_device_px(peer.x, peer.y, 3.0);
+        // Draw cursor pointer
+        set_prop(&ctx, "fillStyle", &peer.color);
+        set_prop(&ctx, "strokeStyle", "#0f172a");
+        set_num_prop(&ctx, "lineWidth", 1.2);
+
+        ctx.begin_path();
+        ctx.move_to(px, py);
+        ctx.line_to(px + 12.0, py + 12.0);
+        ctx.line_to(px + 5.0, py + 13.0);
+        ctx.line_to(px, py + 17.0);
+        ctx.close_path();
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw name badge
+        let label = format!("{} [{}]", peer.user_name, peer.active_tool);
+        set_prop(&ctx, "fillStyle", &peer.color);
+        set_prop(&ctx, "font", "bold 10px Inter, system-ui, sans-serif");
+        let badge_w = (label.len() as f64 * 6.2).max(40.0) + 10.0;
+        let badge_h = 16.0;
+        let bx = px + 12.0;
+        let by = py + 12.0;
+
+        ctx.fill_rect(bx, by, badge_w, badge_h);
+        set_prop(&ctx, "fillStyle", "#0f172a");
+        let _ = ctx.fill_text(&label, bx + 5.0, by + 11.5);
     }
 }

@@ -42,7 +42,7 @@ pub const ALL_VISIBLE_LAYERS_DEFAULT: u32 = LAYER_F_CU
     | LAYER_REVIEW_PIN;
 
 pub const FLOATS_PER_INSTANCE: usize = 8;
-const SPATIAL_CELL_MM: f32 = 2.5;
+pub const SPATIAL_CELL_MM: f32 = 2.5;
 
 #[derive(Clone, Debug, Default)]
 pub struct NetStats {

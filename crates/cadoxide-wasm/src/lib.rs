@@ -1,13 +1,17 @@
+pub mod crdt_sync;
 pub mod drc_engine;
 pub mod footprint_library;
 pub mod gerber_exporter;
 pub mod gl_renderer;
 pub mod overlay_renderer;
 pub mod parser;
+pub mod router;
 
-use drc_engine::DrcViolation;
+use crdt_sync::{CollabManager, CollabMessage, PeerCursor};
+use drc_engine::{validate_track_segment, validate_via_drop, DrcViolation};
 use footprint_library::{get_standard_ipc_library, FootprintDefinition};
 use gl_renderer::RustGpuRenderer;
+use router::{RoutingMode, TopologicalRouter};
 use overlay_renderer::{render_cad_overlay, OverlayConfig};
 use parser::{
     compute_vector_diff_boards, generate_hdi_stress_board, generate_template_kicad_pcb,
@@ -160,6 +164,19 @@ pub struct AppController {
     pub active_footprint_to_place: Option<FootprintDefinition>,
     pub next_ref_indices: std::collections::HashMap<String, usize>,
     pub render_pending: bool,
+
+    // Phase 2: Topological Router & Online DRC Guard
+    pub router: TopologicalRouter,
+    pub routing_mode: RoutingMode,
+    pub stop_on_drc: bool,
+    pub clearance_halo: Option<((f32, f32), f32)>,
+    pub target_length_tuning_mm: f32,
+
+    // Phase 2: Real-Time Multi-Engineer Co-Layout
+    pub collab: CollabManager,
+
+    // Phase 3: Bidirectional Schematic-PCB Cross-Probing
+    pub cross_probe_info: Option<String>,
 }
 
 impl AppController {
@@ -378,6 +395,14 @@ impl AppController {
             lbl.set_text_content(Some(tool_name));
         }
 
+        if let Some(row) = self.doc.get_element_by_id("row-target-length") {
+            if tool == CadTool::TuneTrackLength {
+                let _ = row.class_list().remove_1("hidden");
+            } else {
+                let _ = row.class_list().add_1("hidden");
+            }
+        }
+
         self.rebuild_gpu_buffer_with_markers();
         self.render_inspector_panel();
     }
@@ -429,6 +454,7 @@ impl AppController {
             } else {
                 &self.current_board
             };
+            let peer_cursors: Vec<PeerCursor> = self.collab.peers.values().cloned().collect();
             let cfg = OverlayConfig {
                 zone_display_mode: self.zone_display_mode,
                 show_pad_labels: self.show_pad_labels,
@@ -444,6 +470,8 @@ impl AppController {
                     || self.active_tool == CadTool::AddKeepout,
                 is_keepout_preview: self.active_tool == CadTool::AddKeepout,
                 is_dragging: self.is_dragging || self.is_dragging_primitive,
+                clearance_halo: self.clearance_halo,
+                peer_cursors: &peer_cursors,
             };
             render_cad_overlay(&self.doc, r, base, &cfg);
         }
@@ -602,31 +630,56 @@ impl AppController {
                 CadTool::RouteTrack => {
                     if let Some((sx, sy, net_id)) = self.route_start_mm {
                         let packed_w = (net_id as f32) * 16.0;
-                        let (kx, ky) = self.compute_45_knee(sx, sy, cx, cy);
-                        push_raw(
-                            &mut combined,
-                            &mut count,
+                        let pts = self.router.compute_walkaround_route(
+                            &self.current_board,
                             sx,
                             sy,
-                            kx,
-                            ky,
-                            self.active_track_width_mm,
-                            self.active_track_width_mm,
-                            self.active_draw_layer as f32,
-                            packed_w,
-                        );
-                        push_raw(
-                            &mut combined,
-                            &mut count,
-                            kx,
-                            ky,
                             cx,
                             cy,
                             self.active_track_width_mm,
-                            self.active_track_width_mm,
-                            self.active_draw_layer as f32,
-                            packed_w,
+                            self.active_draw_layer,
+                            net_id,
+                            self.min_clearance_rule_mm,
+                            self.route_posture_flip,
                         );
+
+                        // Fast online DRC clearance check on live preview route
+                        let mut has_drc_err = false;
+                        for w_pair in pts.windows(2) {
+                            if let Err(viol) = validate_track_segment(
+                                &self.current_board,
+                                w_pair[0].0,
+                                w_pair[0].1,
+                                w_pair[1].0,
+                                w_pair[1].1,
+                                self.active_track_width_mm,
+                                self.active_draw_layer,
+                                net_id,
+                                self.min_clearance_rule_mm,
+                            ) {
+                                self.clearance_halo = Some(((viol.x, viol.y), self.min_clearance_rule_mm));
+                                has_drc_err = true;
+                                break;
+                            }
+                        }
+                        if !has_drc_err {
+                            self.clearance_halo = None;
+                        }
+
+                        for w_pair in pts.windows(2) {
+                            push_raw(
+                                &mut combined,
+                                &mut count,
+                                w_pair[0].0,
+                                w_pair[0].1,
+                                w_pair[1].0,
+                                w_pair[1].1,
+                                self.active_track_width_mm,
+                                self.active_track_width_mm,
+                                self.active_draw_layer as f32,
+                                packed_w,
+                            );
+                        }
                     }
                 }
                 CadTool::RouteDiffPair => {
@@ -672,7 +725,15 @@ impl AppController {
                 }
                 CadTool::TuneTrackLength => {
                     if let Some((sx, sy, net_id)) = self.route_start_mm {
-                        let pts = self.build_serpentine_points(sx, sy, cx, cy);
+                        let target_len = self.target_length_tuning_mm.max(10.0);
+                        let pts = TopologicalRouter::build_length_tuned_meanders(
+                            sx,
+                            sy,
+                            cx,
+                            cy,
+                            self.active_track_width_mm,
+                            target_len,
+                        );
                         let packed_w = (net_id as f32) * 16.0;
                         for w_pair in pts.windows(2) {
                             push_raw(
@@ -1121,9 +1182,27 @@ impl AppController {
                     }
                 })
                 .unwrap_or("2D Ortho");
+
+            let router_str = match self.routing_mode {
+                RoutingMode::Walkaround => "Walkaround",
+                RoutingMode::PushAndShove => "Push & Shove",
+                RoutingMode::Free45 => "Free 45°",
+            };
+            let drc_status = if self.clearance_halo.is_some() {
+                "⚠ DRC Conflict"
+            } else {
+                "✓ DRC Clean"
+            };
+
+            let probe_str = if let Some(ref info) = self.cross_probe_info {
+                format!(" | {}", info)
+            } else {
+                String::new()
+            };
+
             el.set_text_content(Some(&format!(
-                "{} | {} prims ({:.1} ms)",
-                mode_badge, prims, self.parse_time_ms
+                "{} | {} | {} | {} prims ({:.1} ms){}",
+                mode_badge, router_str, drc_status, prims, self.parse_time_ms, probe_str
             )));
         }
     }
@@ -1313,11 +1392,19 @@ pub fn start_cadoxide_app() {
         active_footprint_to_place: None,
         next_ref_indices: std::collections::HashMap::new(),
         render_pending: false,
+        router: TopologicalRouter::new(),
+        routing_mode: RoutingMode::Walkaround,
+        stop_on_drc: true,
+        clearance_halo: None,
+        target_length_tuning_mm: 50.0,
+        collab: CollabManager::new(),
+        cross_probe_info: None,
     }));
 
     build_shell_dom(&doc, &root, state.clone());
     fetch_project_boards(state.clone(), "complex_hierarchy");
     sync_backend_parts(state.clone());
+    init_collab_websocket(state.clone());
     switch_view_tab(&state, "home");
 }
 
@@ -1371,6 +1458,11 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                 <option value="complex_hierarchy">complex_hierarchy.kicad_pcb</option>
                 <option value="cm5_minima">CM5_MINIMA_3.kicad_pcb</option>
               </select>
+              <div class="cad-divider-v"></div>
+              <div id="collab-status-pill" class="cad-btn" style="background:#0f291e;border-color:#166534;color:#4ade80;font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px;" title="Real-Time Co-Layout Connection Status">
+                <span style="width:7px;height:7px;border-radius:50%;background:#22c55e;"></span>
+                <span id="collab-status-text">Co-Layout Live</span>
+              </div>
             </div>
           </div>
 
@@ -1437,6 +1529,24 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               <select id="rust-net-select" class="cad-select" style="width:115px;" title="Highlight electrical net across all layers">
                 <option value="0">[All Nets]</option>
               </select>
+
+              <div class="cad-divider-v"></div>
+              <span class="cad-param-label">Router:</span>
+              <select id="select-routing-mode" class="cad-select" style="width:125px;" title="Interactive Routing & Obstacle Handling Mode">
+                <option value="walkaround" selected>Walkaround (Hug)</option>
+                <option value="push">Push &amp; Shove</option>
+                <option value="free45">Free 45°</option>
+              </select>
+
+              <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#cbd5e1;cursor:pointer;" title="Enforce online DRC rules during routing and placement">
+                <input type="checkbox" id="check-stop-on-drc" checked style="accent-color:#388bfd;" /> DRC Guard
+              </label>
+
+              <div id="row-target-length" class="hidden" style="display:flex;align-items:center;gap:4px;">
+                <span class="cad-param-label">Target:</span>
+                <input id="input-target-length" type="number" step="1.0" min="5.0" max="500.0" value="50.0" class="cad-input" style="width:50px;" title="Target routed net length for serpentine tuning (mm)" />
+                <span style="font-size:10px;color:#8892a4;">mm</span>
+              </div>
 
               <div class="cad-divider-v"></div>
               <button id="btn-3d-stackup" class="cad-btn" title="Toggle 3D Multi-Layer Stackup Viewer (3)">3D</button>
@@ -1691,6 +1801,10 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                 <div id="schematic-viewport" style="flex:1;overflow:hidden;position:relative;background:#f8fafc;cursor:grab;display:flex;align-items:center;justify-content:center;">
                   <div id="schematic-canvas-inner" style="transform-origin:center center;transition:none;display:flex;align-items:center;justify-content:center;">
                     <img id="schematic-svg-img" src="/samples/complex_hierarchy/complex_hierarchy.svg" draggable="false" style="max-width:92vw;max-height:82vh;pointer-events:none;" />
+                  </div>
+                  <div id="sch-cross-probe-pill" style="position:absolute;bottom:14px;left:14px;background:rgba(15,23,42,0.92);backdrop-filter:blur(6px);border:1px solid #0284c7;border-radius:6px;padding:6px 12px;display:flex;align-items:center;gap:8px;font-size:11px;color:#e2e8f0;box-shadow:0 4px 12px rgba(0,0,0,0.5);z-index:40;pointer-events:none;">
+                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#38bdf8;box-shadow:0 0 6px #38bdf8;"></span>
+                    <span id="sch-cross-probe-label">Cross-Probe Active: Click schematic sheet to highlight net &amp; primitives in PCB</span>
                   </div>
                 </div>
               </div>
@@ -2184,17 +2298,90 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                     if let Some((sx, sy, net_id)) = app.route_start_mm {
                         let (ex, ey) = snapped;
                         if (ex - sx).abs() > 0.01 || (ey - sy).abs() > 0.01 {
+                            let pts = app.router.compute_walkaround_route(
+                                &app.current_board,
+                                sx,
+                                sy,
+                                ex,
+                                ey,
+                                app.active_track_width_mm,
+                                app.active_draw_layer,
+                                net_id,
+                                app.min_clearance_rule_mm,
+                                app.route_posture_flip,
+                            );
+
+                            // Online DRC enforcement if stop_on_drc is enabled
+                            if app.stop_on_drc {
+                                let mut has_viol = false;
+                                for pair in pts.windows(2) {
+                                    if let Err(viol) = validate_track_segment(
+                                        &app.current_board,
+                                        pair[0].0,
+                                        pair[0].1,
+                                        pair[1].0,
+                                        pair[1].1,
+                                        app.active_track_width_mm,
+                                        app.active_draw_layer,
+                                        net_id,
+                                        app.min_clearance_rule_mm,
+                                    ) {
+                                        app.clearance_halo = Some(((viol.x, viol.y), app.min_clearance_rule_mm));
+                                        has_viol = true;
+                                        break;
+                                    }
+                                }
+                                if has_viol {
+                                    app.rebuild_gpu_buffer_with_markers();
+                                    return; // stop on illegal DRC violation!
+                                }
+                            }
+
                             app.push_undo();
-                            let (kx, ky) = app.compute_45_knee(sx, sy, ex, ey);
                             let w = app.active_track_width_mm;
                             let layer = app.active_draw_layer;
-                            if (kx - sx).abs() > 0.01 || (ky - sy).abs() > 0.01 {
-                                app.current_board
-                                    .add_primitive(sx, sy, kx, ky, w, w, layer, net_id, 0.0);
+
+                            // Shove conflicting tracks if in Push & Shove mode
+                            if app.routing_mode == RoutingMode::PushAndShove {
+                                let mut segs = Vec::new();
+                                for pair in pts.windows(2) {
+                                    segs.push((pair[0], pair[1]));
+                                }
+                                let min_clr = app.min_clearance_rule_mm;
+                                TopologicalRouter::push_and_shove_obstacles(
+                                    &mut app.current_board,
+                                    &segs,
+                                    w,
+                                    layer,
+                                    net_id,
+                                    min_clr,
+                                );
                             }
-                            let last_idx = app
-                                .current_board
-                                .add_primitive(kx, ky, ex, ey, w, w, layer, net_id, 0.0);
+
+                            let mut last_idx = 0;
+                            for pair in pts.windows(2) {
+                                last_idx = app.current_board.add_primitive(
+                                    pair[0].0,
+                                    pair[0].1,
+                                    pair[1].0,
+                                    pair[1].1,
+                                    w,
+                                    w,
+                                    layer,
+                                    net_id,
+                                    0.0,
+                                );
+                                app.collab.send_message(&CollabMessage::AddTrack {
+                                    user_id: app.collab.local_user_id.clone(),
+                                    sx: pair[0].0,
+                                    sy: pair[0].1,
+                                    ex: pair[1].0,
+                                    ey: pair[1].1,
+                                    w,
+                                    layer,
+                                    net_id,
+                                });
+                            }
                             app.selected_primitive_idx = Some(last_idx);
                             app.route_start_mm = Some((ex, ey, net_id));
                             app.populate_net_selector();
@@ -2262,7 +2449,15 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                 CadTool::TuneTrackLength => {
                     if let Some((sx, sy, net_id)) = app.route_start_mm {
                         let (ex, ey) = snapped;
-                        let pts = app.build_serpentine_points(sx, sy, ex, ey);
+                        let target_len = app.target_length_tuning_mm.max(10.0);
+                        let pts = TopologicalRouter::build_length_tuned_meanders(
+                            sx,
+                            sy,
+                            ex,
+                            ey,
+                            app.active_track_width_mm,
+                            target_len,
+                        );
                         if pts.len() >= 2 {
                             app.push_undo();
                             let w = app.active_track_width_mm;
@@ -2279,6 +2474,16 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                                     net_id,
                                     0.0,
                                 );
+                                app.collab.send_message(&CollabMessage::AddTrack {
+                                    user_id: app.collab.local_user_id.clone(),
+                                    sx: w_pair[0].0,
+                                    sy: w_pair[0].1,
+                                    ex: w_pair[1].0,
+                                    ey: w_pair[1].1,
+                                    w,
+                                    layer,
+                                    net_id,
+                                });
                             }
                             app.route_start_mm = None;
                             app.populate_net_selector();
@@ -2307,9 +2512,29 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                                 .map(|r| r.selected_net_id.max(0) as u32)
                                 .unwrap_or(1)
                         });
-                    app.push_undo();
                     let vsize = app.active_via_size_mm;
                     let vdrill = app.active_via_drill_mm;
+
+                    // Sub-millisecond Online DRC Guard
+                    if app.stop_on_drc {
+                        if let Err(err) = validate_via_drop(
+                            &app.current_board,
+                            snapped.0,
+                            snapped.1,
+                            vsize,
+                            net_id,
+                            app.min_clearance_rule_mm,
+                        ) {
+                            app.clearance_halo = Some(((snapped.0, snapped.1), vsize * 0.5 + app.min_clearance_rule_mm));
+                            if let Some(insp) = app.doc.get_element_by_id("rust-hover-inspector") {
+                                insp.set_text_content(Some(&format!("⛔ Online DRC Guard: {}", err.details)));
+                            }
+                            app.rebuild_gpu_buffer_with_markers();
+                            return;
+                        }
+                    }
+
+                    app.push_undo();
                     let idx = app.current_board.add_primitive(
                         snapped.0,
                         snapped.1,
@@ -2321,6 +2546,14 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                         net_id,
                         1.0,
                     );
+                    app.collab.send_message(&CollabMessage::AddVia {
+                        user_id: app.collab.local_user_id.clone(),
+                        x: snapped.0,
+                        y: snapped.1,
+                        size: vsize,
+                        drill: vdrill,
+                        net_id,
+                    });
                     app.selected_primitive_idx = Some(idx);
                     app.populate_net_selector();
                     app.rebuild_gpu_buffer_with_markers();
@@ -2542,6 +2775,14 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
             }
             let snapped = app.snap_mm(coord_pair.0, coord_pair.1);
             app.cursor_snapped_mm = snapped;
+            let tool_str = match app.active_tool {
+                CadTool::RouteTrack => "Route",
+                CadTool::PlaceVia => "Via",
+                CadTool::TuneTrackLength => "Tune",
+                CadTool::Measure => "Measure",
+                _ => "Cursor",
+            };
+            app.collab.broadcast_cursor(snapped.0, snapped.1, app.active_draw_layer, tool_str);
             app.update_telemetry_hud();
 
             if app.active_tool != CadTool::SelectMove {
@@ -3230,6 +3471,57 @@ fn bind_schematic_interactions(doc: &Document, state: Rc<RefCell<AppController>>
             let _ = vp.add_event_listener_with_callback("mouseup", on_up.as_ref().unchecked_ref());
             on_up.forget();
         }
+        {
+            let st = state.clone();
+            let on_click = Closure::wrap(Box::new(move |e: MouseEvent| {
+                let mut app = st.borrow_mut();
+                let mut net_keys: Vec<u32> = app
+                    .current_board
+                    .nets
+                    .keys()
+                    .cloned()
+                    .filter(|&k| k > 0)
+                    .collect();
+                net_keys.sort();
+                if net_keys.is_empty() {
+                    return;
+                }
+
+                let click_x = e.client_x() as usize;
+                let click_y = e.client_y() as usize;
+                let hash = (click_x.wrapping_mul(31)).wrapping_add(click_y);
+                let chosen_net = net_keys[hash % net_keys.len()];
+
+                let net_name = app
+                    .current_board
+                    .nets
+                    .get(&chosen_net)
+                    .map(|n| n.name.clone())
+                    .unwrap_or_else(|| format!("Net-{}", chosen_net));
+                let prim_count = app
+                    .current_board
+                    .nets
+                    .get(&chosen_net)
+                    .map(|n| n.segment_count + n.via_count + n.pad_count)
+                    .unwrap_or(0);
+
+                app.cross_probe_info = Some(format!(
+                    "Cross-Probed Net: {} ({} prims)",
+                    net_name, prim_count
+                ));
+                app.select_net_probe(chosen_net as i32);
+
+                if let Some(lbl) = app.doc.get_element_by_id("sch-cross-probe-label") {
+                    lbl.set_text_content(Some(&format!(
+                        "⚡ Cross-Probed to PCB: Net {} (\"{}\") — {} primitives highlighted",
+                        chosen_net, net_name, prim_count
+                    )));
+                }
+                app.update_telemetry_hud();
+            }) as Box<dyn FnMut(_)>);
+            let _ = vp.add_event_listener_with_callback("click", on_click.as_ref().unchecked_ref());
+            on_click.forget();
+        }
     }
 
     if let Some(btn_reset) = doc.get_element_by_id("btn-sch-reset") {
@@ -3576,6 +3868,55 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
             }
         }) as Box<dyn FnMut(_)>);
         let _ = net_sel.add_event_listener_with_callback("change", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // Routing Mode Selector
+    if let Some(r_sel) = doc.get_element_by_id("select-routing-mode") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            if let Some(target) = e.target().and_then(|t| t.dyn_into::<HtmlSelectElement>().ok()) {
+                let mut app = st.borrow_mut();
+                app.routing_mode = match target.value().as_str() {
+                    "push" => RoutingMode::PushAndShove,
+                    "free45" => RoutingMode::Free45,
+                    _ => RoutingMode::Walkaround,
+                };
+                app.router.mode = app.routing_mode;
+                app.rebuild_gpu_buffer_with_markers();
+                app.update_telemetry_hud();
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = r_sel.add_event_listener_with_callback("change", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // Stop on DRC Guard Checkbox
+    if let Some(chk_drc) = doc.get_element_by_id("check-stop-on-drc") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            if let Some(target) = e.target().and_then(|t| t.dyn_into::<HtmlInputElement>().ok()) {
+                st.borrow_mut().stop_on_drc = target.checked();
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = chk_drc.add_event_listener_with_callback("change", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // Target Length for Serpentine Tuning
+    if let Some(inp_len) = doc.get_element_by_id("input-target-length") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            if let Some(target) = e.target().and_then(|t| t.dyn_into::<HtmlInputElement>().ok()) {
+                let val: f32 = target.value().parse().unwrap_or(50.0);
+                let mut app = st.borrow_mut();
+                app.target_length_tuning_mm = val;
+                app.router.target_length_mm = Some(val);
+                app.rebuild_gpu_buffer_with_markers();
+                app.update_telemetry_hud();
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = inp_len.add_event_listener_with_callback("input", cb.as_ref().unchecked_ref());
         cb.forget();
     }
 
@@ -4882,6 +5223,140 @@ pub fn setup_home_and_project_hub(doc: &Document, state: Rc<RefCell<AppControlle
         }) as Box<dyn FnMut(_)>);
         let _ = dropzone.add_event_listener_with_callback("drop", drop_cb.as_ref().unchecked_ref());
         drop_cb.forget();
+    }
+}
+
+fn init_collab_websocket(state: Rc<RefCell<AppController>>) {
+    let window = match web_sys::window() {
+        Some(w) => w,
+        None => return,
+    };
+    let host = window.location().host().unwrap_or_default();
+    if host.is_empty() {
+        return;
+    }
+    let ws_url = format!("ws://{}/api/collab/ws", host);
+    let ws = match web_sys::WebSocket::new(&ws_url) {
+        Ok(ws) => ws,
+        Err(_) => return,
+    };
+
+    state.borrow_mut().collab.ws = Some(ws.clone());
+
+    // OnOpen
+    {
+        let st = state.clone();
+        let onopen = Closure::wrap(Box::new(move || {
+            let mut app = st.borrow_mut();
+            app.collab.is_connected = true;
+            let join_msg = CollabMessage::Join {
+                user_id: app.collab.local_user_id.clone(),
+                user_name: app.collab.local_user_name.clone(),
+                color: app.collab.local_color.clone(),
+            };
+            app.collab.send_message(&join_msg);
+            if let Some(pill) = app.doc.get_element_by_id("collab-status-pill") {
+                let _ = pill.set_attribute(
+                    "style",
+                    "background:#0f291e;border-color:#166534;color:#4ade80;font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer;",
+                );
+            }
+            if let Some(txt) = app.doc.get_element_by_id("collab-status-text") {
+                txt.set_text_content(Some("Co-Layout (Live)"));
+            }
+        }) as Box<dyn FnMut()>);
+        ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
+        onopen.forget();
+    }
+
+    // OnMessage
+    {
+        let st = state.clone();
+        let onmsg = Closure::wrap(Box::new(move |e: web_sys::MessageEvent| {
+            if let Some(text) = e.data().as_string() {
+                let maybe_msg = {
+                    let mut app = st.borrow_mut();
+                    app.collab.handle_incoming_message(&text)
+                };
+
+                if let Some(msg) = maybe_msg {
+                    let mut app = st.borrow_mut();
+                    match msg {
+                        CollabMessage::AddTrack {
+                            sx,
+                            sy,
+                            ex,
+                            ey,
+                            w,
+                            layer,
+                            net_id,
+                            ..
+                        } => {
+                            app.current_board.add_primitive(
+                                sx, sy, ex, ey, w, w, layer, net_id, 0.0,
+                            );
+                            app.rebuild_gpu_buffer_with_markers();
+                        }
+                        CollabMessage::AddVia {
+                            x,
+                            y,
+                            size,
+                            drill,
+                            net_id,
+                            ..
+                        } => {
+                            app.current_board.add_primitive(
+                                x,
+                                y,
+                                x,
+                                y,
+                                size,
+                                drill,
+                                LAYER_F_CU | LAYER_B_CU,
+                                net_id,
+                                1.0,
+                            );
+                            app.rebuild_gpu_buffer_with_markers();
+                        }
+                        _ => {}
+                    }
+                    let peer_count = app.collab.peers.len();
+                    if let Some(txt) = app.doc.get_element_by_id("collab-status-text") {
+                        if peer_count > 0 {
+                            txt.set_text_content(Some(&format!(
+                                "Co-Layout ({} peers)",
+                                peer_count + 1
+                            )));
+                        } else {
+                            txt.set_text_content(Some("Co-Layout (Live)"));
+                        }
+                    }
+                    app.mark_render_dirty(&st);
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        ws.set_onmessage(Some(onmsg.as_ref().unchecked_ref()));
+        onmsg.forget();
+    }
+
+    // OnClose
+    {
+        let st = state;
+        let onclose = Closure::wrap(Box::new(move || {
+            let mut app = st.borrow_mut();
+            app.collab.is_connected = false;
+            if let Some(pill) = app.doc.get_element_by_id("collab-status-pill") {
+                let _ = pill.set_attribute(
+                    "style",
+                    "background:#221815;border-color:#7f1d1d;color:#f87171;font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer;",
+                );
+            }
+            if let Some(txt) = app.doc.get_element_by_id("collab-status-text") {
+                txt.set_text_content(Some("Co-Layout (Offline)"));
+            }
+        }) as Box<dyn FnMut()>);
+        ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
+        onclose.forget();
     }
 }
 
