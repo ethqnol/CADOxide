@@ -1415,36 +1415,17 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
     root.set_inner_html(
         r##"
         <div class="cad-shell">
-          <!-- Row 1: Native KiCad Pcbnew Desktop Menu Bar + Mode Tabs -->
+          <!-- Row 1: Native Desktop Application Menu Bar + Project Picker + Quick Actions -->
           <div class="cad-topmenu">
             <div class="cad-menu-items">
               <div id="brand-home-link" class="cad-brand" title="Return to Projects Home (Click to open project manager)">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                  <rect x="1" y="1" width="14" height="14" rx="2" stroke="#c83434" stroke-width="1.5"/>
-                  <circle cx="5" cy="5" r="1.5" fill="#79b8ff"/>
-                  <circle cx="11" cy="11" r="1.5" fill="#79b8ff"/>
-                  <path d="M5 5L8 8H11V11" stroke="#c83434" stroke-width="1.4" stroke-linecap="round"/>
+                  <rect x="1" y="1" width="14" height="14" rx="2" stroke="#ef4444" stroke-width="1.5"/>
+                  <circle cx="5" cy="5" r="1.5" fill="#60a5fa"/>
+                  <circle cx="11" cy="11" r="1.5" fill="#60a5fa"/>
+                  <path d="M5 5L8 8H11V11" stroke="#ef4444" stroke-width="1.4" stroke-linecap="round"/>
                 </svg>
                 <span>CADOxide</span>
-              </div>
-              <div class="cad-divider-v"></div>
-              <button id="btn-topbar-home" class="cad-menu-btn" style="color:#60a5fa;font-weight:600;display:flex;align-items:center;gap:4px;" title="Go to Projects Home (Return to project manager)">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                </svg>
-                <span>Home</span>
-              </button>
-              <div class="cad-divider-v"></div>
-              <div class="cad-project-picker" style="display:flex;align-items:center;gap:5px;background:#13161c;border:1px solid #28303d;border-radius:4px;padding:1px 6px;height:22px;">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                </svg>
-                <span style="font-size:10px;color:#717a8c;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;">Project:</span>
-                <select id="rust-project-select" class="cad-select" style="border:none;background:transparent;padding:0 16px 0 2px;height:20px;font-size:11px;font-weight:600;color:#e2e8f0;cursor:pointer;max-width:200px;" title="Switch active project">
-                  <option value="complex_hierarchy">Audio Power Amp</option>
-                  <option value="cm5_minima">CM5 Carrier Board</option>
-                </select>
               </div>
               <div class="cad-divider-v"></div>
               <div class="cad-menu-dropdown-wrap">
@@ -1675,58 +1656,94 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               </div>
             </div>
 
-            <!-- Center Workspace Mode Tabs -->
-            <div class="cad-tabs">
-              <button id="tab-home" class="cad-tab cad-tab-active">Home</button>
-              <button id="tab-pcb" class="cad-tab">PCB Editor</button>
-              <button id="tab-schematic" class="cad-tab">Schematic Editor</button>
-              <button id="tab-diff" class="cad-tab">Layer Diff</button>
-              <button id="tab-drc" class="cad-tab">DRC (<span id="drc-count-badge">69</span>)</button>
-              <button id="tab-parts" class="cad-tab">BOM (8)</button>
-            </div>
-
-            <!-- Right Quick Fabrication Package Actions -->
+            <!-- Right: Active Project Switcher + Quick Actions -->
             <div class="cad-menubar-group">
-              <button id="btn-topbar-new" class="cad-btn" style="background:#1c3826;border-color:#2e7d32;color:#86efac;font-weight:600;" title="Start a new PCB project from template">+ New</button>
-              <button id="btn-topbar-open" class="cad-btn" style="background:#1f2937;border-color:#374151;color:#e5e7eb;" title="Open .kicad_pcb file from computer">Open...</button>
+              <div class="cad-project-picker" style="display:flex;align-items:center;gap:5px;background:#101319;border:1px solid #28303d;border-radius:4px;padding:1px 6px;height:22px;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span style="font-size:10px;color:#717a8c;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;">Project:</span>
+                <select id="rust-project-select" class="cad-select" style="border:none;background:transparent;padding:0 16px 0 2px;height:20px;font-size:11px;font-weight:600;color:#e2e8f0;cursor:pointer;max-width:180px;" title="Switch active project">
+                  <option value="complex_hierarchy">Audio Power Amp</option>
+                  <option value="cm5_minima">CM5 Carrier Board</option>
+                </select>
+              </div>
               <div class="cad-divider-v"></div>
-              <button id="btn-export-pcb" class="cad-btn" title="Save / Download .kicad_pcb">Save</button>
-              <a id="btn-export-gerbers" href="#" class="cad-btn" style="background:#142d1f;border-color:#2e7d32;color:#86efac;font-weight:700;" title="Generate &amp; Download Complete RS-274X Gerber &amp; NC Drill Fabrication ZIP">Gerbers</a>
-              <button id="btn-open-fp-browser" class="cad-btn" style="background:#162436;border-color:#388bfd;color:#79b8ff;font-weight:600;" title="Browse IPC-7351 Standard Component Footprints (A)">Footprint (A)</button>
+              <button id="btn-topbar-new" class="cad-btn" style="background:#142d1f;border-color:#22543d;color:#86efac;font-weight:600;" title="Start a new PCB project from template">+ New</button>
+              <button id="btn-topbar-open" class="cad-btn" style="background:#1e232e;border-color:#333c4d;color:#e2e8f0;" title="Open .kicad_pcb file from computer">Open...</button>
+              <button id="btn-export-pcb" class="cad-btn" style="background:#1e293b;border-color:#334155;color:#f8fafc;" title="Save / Download .kicad_pcb">Save</button>
+              <a id="btn-export-gerbers" href="#" class="cad-btn" style="background:#162e24;border-color:#22543d;color:#6ee7b7;font-weight:600;" title="Generate &amp; Download Complete RS-274X Gerber &amp; NC Drill Fabrication ZIP">Gerbers</a>
               <div class="cad-divider-v"></div>
-              <div id="collab-status-pill" class="cad-btn" style="background:#0f291e;border-color:#166534;color:#4ade80;font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px;" title="Real-Time Co-Layout Connection Status">
-                <span style="width:7px;height:7px;border-radius:50%;background:#22c55e;"></span>
+              <div id="collab-status-pill" class="cad-btn" style="background:#0d2319;border-color:#166534;color:#4ade80;font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px;" title="Real-Time Co-Layout Connection Status">
+                <span style="width:6px;height:6px;border-radius:50%;background:#22c55e;"></span>
                 <span id="collab-status-text">Co-Layout Live</span>
               </div>
             </div>
           </div>
 
-          <!-- Row 2: KiCad Auxiliary & Action Toolbar (History, Zoom, PCB Parameters, 3D) -->
-          <div id="cad-param-bar" class="cad-param-bar">
-            <div class="cad-menubar-group">
+          <!-- Row 2: Workspace View Mode Tabs & Navigation Strip -->
+          <div class="cad-tabbar">
+            <div class="cad-tabs">
+              <button id="tab-home" class="cad-tab cad-tab-active" title="Projects &amp; Templates Home (Alt+H)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                <span>Home</span>
+              </button>
+              <button id="tab-pcb" class="cad-tab" title="2D Interactive PCB Layout Editor (1)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="3"></rect><circle cx="8" cy="8" r="2"></circle><circle cx="16" cy="16" r="2"></circle><path d="M8 10v4h8"></path></svg>
+                <span>PCB Editor</span>
+              </button>
+              <button id="tab-schematic" class="cad-tab" title="Schematic Sheet Viewer (2)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                <span>Schematic</span>
+              </button>
+              <button id="tab-diff" class="cad-tab" title="Visual Layer Revision Diff (4)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M13 6h3a2 2 0 0 1 2 2v7"></path><line x1="6" y1="9" x2="6" y2="21"></line></svg>
+                <span>Layer Diff</span>
+              </button>
+              <button id="tab-drc" class="cad-tab" title="DRC Rule Workbench (5)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                <span>DRC (<span id="drc-count-badge">69</span>)</span>
+              </button>
+              <button id="tab-parts" class="cad-tab" title="BOM &amp; Component Sourcing (6)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                <span>BOM (8)</span>
+              </button>
+            </div>
+
+            <!-- Right: Canvas Shortcuts & Footprint Browser Trigger -->
+            <div id="tabbar-canvas-actions" class="cad-menubar-group">
               <button id="btn-undo" class="cad-btn" title="Undo (Ctrl+Z)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
                 <span>Undo</span>
               </button>
               <button id="btn-rotate-selected" class="cad-btn" title="Rotate Selected 90° (R)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.85.83 6.72 2.24L21 8"/><path d="M21 3v5h-5"/></svg>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.85.83 6.72 2.24L21 8"/><path d="M21 3v5h-5"/></svg>
               </button>
               <button id="btn-delete-selected" class="cad-btn cad-btn-danger" title="Delete Selected Item (Del)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
               <div class="cad-divider-v"></div>
               <button id="btn-zoom-in" class="cad-btn" title="Zoom In (+)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
               </button>
               <button id="btn-zoom-out" class="cad-btn" title="Zoom Out (-)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
               </button>
               <button id="btn-zoom-fit" class="cad-btn" title="Zoom to Fit Board (Home)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
                 <span>Fit</span>
               </button>
               <div class="cad-divider-v"></div>
+              <button id="btn-open-fp-browser" class="cad-btn" style="background:#162436;border-color:#388bfd;color:#79b8ff;font-weight:600;" title="Browse IPC-7351 Standard Component Footprints (A)">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><circle cx="16" cy="8" r="1.5"/><circle cx="8" cy="16" r="1.5"/><circle cx="16" cy="16" r="1.5"/></svg>
+                <span>Footprints (A)</span>
+              </button>
+            </div>
+          </div>
 
+          <!-- Row 3: Active PCB Editor Parameters & Tooling -->
+          <div id="cad-param-bar" class="cad-param-bar">
+            <div class="cad-menubar-group">
               <span class="cad-param-label">Layer:</span>
               <select id="select-draw-layer" class="cad-select" style="width:90px;" title="Active Drawing / Routing Layer">
                 <option value="1">F.Cu</option>
@@ -4989,9 +5006,10 @@ pub fn switch_view_tab(state: &Rc<RefCell<AppController>>, mode: &str) {
         }
     }
 
-    // Toggle editor chrome: when in "home" mode, hide parameter bar, left toolstrip, right toolstrip, and right sidebar
+    // Toggle editor chrome: when in "home" mode, hide parameter bar, canvas action buttons, left toolstrip, right toolstrip, and right sidebar
     for editor_elem_id in [
         "cad-param-bar",
+        "tabbar-canvas-actions",
         "cad-left-strip",
         "cad-right-toolstrip",
         "cad-right-sidebar",
