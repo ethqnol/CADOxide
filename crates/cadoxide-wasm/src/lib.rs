@@ -99,6 +99,7 @@ pub struct AppController {
     pub current_board: ParsedBoard,
     pub undo_stack: Vec<ParsedBoard>,
     pub parse_time_ms: f64,
+    pub custom_board: Option<(String, ParsedBoard)>,
 
     // Mouse & Camera Interaction State
     pub is_dragging: bool,
@@ -1340,6 +1341,7 @@ pub fn start_cadoxide_app() {
         current_board: empty_board,
         undo_stack: Vec::new(),
         parse_time_ms: 0.0,
+        custom_board: None,
         is_dragging: false,
         drag_button: 0,
         is_dragging_primitive: false,
@@ -1445,13 +1447,232 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                 </select>
               </div>
               <div class="cad-divider-v"></div>
-              <button id="menu-file-save" class="cad-menu-btn" title="File → Export .kicad_pcb">File</button>
-              <button id="menu-edit-undo" class="cad-menu-btn" title="Edit → Undo (Ctrl+Z)">Edit</button>
-              <button id="menu-view-3d" class="cad-menu-btn" title="View → Toggle 3D Viewer (3)">View</button>
-              <button id="menu-place-pad" class="cad-menu-btn" title="Place → Footprint / Pad (P)">Place</button>
-              <button id="menu-route-single" class="cad-menu-btn" title="Route → Single Track (X)">Route</button>
-              <button id="menu-inspect-drc" class="cad-menu-btn" title="Inspect → Design Rules Checker">Inspect</button>
-              <button id="menu-tools-fill" class="cad-menu-btn" title="Tools → Fill All Zones (B)">Tools</button>
+              <div class="cad-menu-dropdown-wrap">
+                <button id="menu-btn-file" class="cad-menu-btn" data-menu="file">File ▾</button>
+                <div class="cad-menu-dropdown hidden" id="dropdown-menu-file">
+                  <div class="cad-menu-dropdown-item" id="menu-action-new">
+                    <span>New Project...</span>
+                    <span class="cad-menu-shortcut">Ctrl+N</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-open">
+                    <span>Open .kicad_pcb...</span>
+                    <span class="cad-menu-shortcut">Ctrl+O</span>
+                  </div>
+                  <div class="cad-menu-divider"></div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-save">
+                    <span>Save / Export .kicad_pcb</span>
+                    <span class="cad-menu-shortcut">Ctrl+S</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-gerber">
+                    <span>Export Gerbers &amp; Drill ZIP</span>
+                    <span class="cad-menu-shortcut">CAM</span>
+                  </div>
+                  <div class="cad-menu-divider"></div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-home">
+                    <span>Projects Home Hub</span>
+                    <span class="cad-menu-shortcut">Alt+H</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="cad-menu-dropdown-wrap">
+                <button id="menu-btn-edit" class="cad-menu-btn" data-menu="edit">Edit ▾</button>
+                <div class="cad-menu-dropdown hidden" id="dropdown-menu-edit">
+                  <div class="cad-menu-dropdown-item" id="menu-action-undo">
+                    <span>Undo</span>
+                    <span class="cad-menu-shortcut">Ctrl+Z</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-rotate">
+                    <span>Rotate Selected 90°</span>
+                    <span class="cad-menu-shortcut">R</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-delete">
+                    <span>Delete Selected Item</span>
+                    <span class="cad-menu-shortcut">Del</span>
+                  </div>
+                  <div class="cad-menu-divider"></div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-deselect">
+                    <span>Deselect All</span>
+                    <span class="cad-menu-shortcut">Esc</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="cad-menu-dropdown-wrap">
+                <button id="menu-btn-view" class="cad-menu-btn" data-menu="view">View ▾</button>
+                <div class="cad-menu-dropdown hidden" id="dropdown-menu-view">
+                  <div class="cad-menu-dropdown-item" id="menu-action-view-pcb">
+                    <span>PCB 2D Layout Editor</span>
+                    <span class="cad-menu-shortcut">1</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-view-3d">
+                    <span>Toggle 3D Orbit View</span>
+                    <span class="cad-menu-shortcut">3</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-view-sch">
+                    <span>Schematic Sheet Viewer</span>
+                    <span class="cad-menu-shortcut">2</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-view-diff">
+                    <span>Visual Layer Revision Diff</span>
+                    <span class="cad-menu-shortcut">4</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-view-drc">
+                    <span>DRC Rule Workbench</span>
+                    <span class="cad-menu-shortcut">5</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-view-bom">
+                    <span>BOM &amp; Component Catalog</span>
+                    <span class="cad-menu-shortcut">6</span>
+                  </div>
+                  <div class="cad-menu-divider"></div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-zoom-fit">
+                    <span>Zoom to Fit Board</span>
+                    <span class="cad-menu-shortcut">Home</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-zoom-in">
+                    <span>Zoom In</span>
+                    <span class="cad-menu-shortcut">+</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-zoom-out">
+                    <span>Zoom Out</span>
+                    <span class="cad-menu-shortcut">−</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-contrast">
+                    <span>High-Contrast Mode</span>
+                    <span class="cad-menu-shortcut">H</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-flip">
+                    <span>Flip Board View</span>
+                    <span class="cad-menu-shortcut">F</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="cad-menu-dropdown-wrap">
+                <button id="menu-btn-place" class="cad-menu-btn" data-menu="place">Place ▾</button>
+                <div class="cad-menu-dropdown hidden" id="dropdown-menu-place">
+                  <div class="cad-menu-dropdown-item" id="menu-action-place-pad">
+                    <span>Footprint / SMD Pad</span>
+                    <span class="cad-menu-shortcut">P</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-place-fp-lib">
+                    <span>Browse IPC Footprint Library...</span>
+                    <span class="cad-menu-shortcut">A</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-place-via">
+                    <span>Freestanding Via</span>
+                    <span class="cad-menu-shortcut">V</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-place-zone">
+                    <span>Filled Copper Zone</span>
+                    <span class="cad-menu-shortcut">Z</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-place-keepout">
+                    <span>Rule / Keepout Zone</span>
+                    <span class="cad-menu-shortcut">K</span>
+                  </div>
+                  <div class="cad-menu-divider"></div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-place-line">
+                    <span>Graphic Line</span>
+                    <span class="cad-menu-shortcut">L</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-place-arc">
+                    <span>Graphic Arc</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-place-circle">
+                    <span>Graphic Circle</span>
+                    <span class="cad-menu-shortcut">C</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-place-rect">
+                    <span>Graphic Rectangle</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-place-poly">
+                    <span>Graphic Polygon</span>
+                    <span class="cad-menu-shortcut">Y</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-place-text">
+                    <span>Text Item</span>
+                    <span class="cad-menu-shortcut">T</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-place-dim">
+                    <span>Linear Dimension</span>
+                    <span class="cad-menu-shortcut">D</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-place-origin">
+                    <span>Grid / Drill Origin</span>
+                    <span class="cad-menu-shortcut">O</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="cad-menu-dropdown-wrap">
+                <button id="menu-btn-route" class="cad-menu-btn" data-menu="route">Route ▾</button>
+                <div class="cad-menu-dropdown hidden" id="dropdown-menu-route">
+                  <div class="cad-menu-dropdown-item" id="menu-action-route-single">
+                    <span>Interactive Single Track</span>
+                    <span class="cad-menu-shortcut">X</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-route-diffpair">
+                    <span>Differential Pair Route</span>
+                    <span class="cad-menu-shortcut">6</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-route-tune">
+                    <span>Length Tuning / Serpentine Meander</span>
+                    <span class="cad-menu-shortcut">7</span>
+                  </div>
+                  <div class="cad-menu-divider"></div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-route-walk">
+                    <span>Obstacle Mode: Walkaround</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-route-push">
+                    <span>Obstacle Mode: Push &amp; Shove</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-route-free45">
+                    <span>Obstacle Mode: Free 45°</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="cad-menu-dropdown-wrap">
+                <button id="menu-btn-inspect" class="cad-menu-btn" data-menu="inspect">Inspect ▾</button>
+                <div class="cad-menu-dropdown hidden" id="dropdown-menu-inspect">
+                  <div class="cad-menu-dropdown-item" id="menu-action-inspect-drc">
+                    <span>Design Rules Checker (DRC)</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-inspect-run-drc">
+                    <span>Run Live Clearance DRC</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-inspect-measure">
+                    <span>Measure Distance Between Points</span>
+                    <span class="cad-menu-shortcut">M</span>
+                  </div>
+                  <div class="cad-menu-divider"></div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-inspect-bom">
+                    <span>Bill of Materials &amp; Parts Sourcing</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="cad-menu-dropdown-wrap">
+                <button id="menu-btn-tools" class="cad-menu-btn" data-menu="tools">Tools ▾</button>
+                <div class="cad-menu-dropdown hidden" id="dropdown-menu-tools">
+                  <div class="cad-menu-dropdown-item" id="menu-action-tools-fill">
+                    <span>Fill All Copper Zones</span>
+                    <span class="cad-menu-shortcut">B</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-tools-outline">
+                    <span>Show Only Zone Outlines</span>
+                  </div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-tools-hide-zones">
+                    <span>Do Not Show Copper Zones</span>
+                  </div>
+                  <div class="cad-menu-divider"></div>
+                  <div class="cad-menu-dropdown-item" id="menu-action-tools-gerbers">
+                    <span>Generate Fabrication Gerbers (.zip)</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- Center Workspace Mode Tabs -->
@@ -1469,7 +1690,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               <button id="btn-topbar-new" class="cad-btn" style="background:#1c3826;border-color:#2e7d32;color:#86efac;font-weight:600;" title="Start a new PCB project from template">+ New</button>
               <button id="btn-topbar-open" class="cad-btn" style="background:#1f2937;border-color:#374151;color:#e5e7eb;" title="Open .kicad_pcb file from computer">Open...</button>
               <div class="cad-divider-v"></div>
-              <a id="btn-export-pcb" href="#" download="edited_board.kicad_pcb" class="cad-btn" title="Save / Download .kicad_pcb">Save</a>
+              <button id="btn-export-pcb" class="cad-btn" title="Save / Download .kicad_pcb">Save</button>
               <a id="btn-export-gerbers" href="#" class="cad-btn" style="background:#142d1f;border-color:#2e7d32;color:#86efac;font-weight:700;" title="Generate &amp; Download Complete RS-274X Gerber &amp; NC Drill Fabrication ZIP">Gerbers</a>
               <button id="btn-open-fp-browser" class="cad-btn" style="background:#162436;border-color:#388bfd;color:#79b8ff;font-weight:600;" title="Browse IPC-7351 Standard Component Footprints (A)">Footprint (A)</button>
               <div class="cad-divider-v"></div>
@@ -3581,6 +3802,29 @@ fn bind_keyboard_shortcuts(doc: &Document, state: Rc<RefCell<AppController>>) {
             return;
         }
 
+        if (e.ctrl_key() || e.meta_key()) && (key == "s" || key == "S") {
+            e.prevent_default();
+            drop(app);
+            trigger_save_kicad_pcb(&state);
+            return;
+        }
+
+        if (e.ctrl_key() || e.meta_key()) && (key == "o" || key == "O") {
+            e.prevent_default();
+            if let Some(inp) = app.doc.get_element_by_id("home-file-input").and_then(|el| el.dyn_into::<HtmlInputElement>().ok()) {
+                inp.click();
+            }
+            return;
+        }
+
+        if (e.ctrl_key() || e.meta_key()) && (key == "n" || key == "N") {
+            e.prevent_default();
+            if let Some(m) = app.doc.get_element_by_id("modal-new-project") {
+                let _ = m.class_list().remove_1("hidden");
+            }
+            return;
+        }
+
         if key == "Home" || (e.alt_key() && (key == "h" || key == "H")) {
             e.prevent_default();
             drop(app);
@@ -3680,6 +3924,23 @@ fn toggle_3d_mode(app: &mut AppController) {
     app.update_telemetry_hud();
 }
 
+fn close_all_cad_menus(doc: &Document) {
+    if let Ok(all_dds) = doc.query_selector_all(".cad-menu-dropdown") {
+        for i in 0..all_dds.length() {
+            if let Some(el) = all_dds.get(i).and_then(|n| n.dyn_into::<Element>().ok()) {
+                let _ = el.class_list().add_1("hidden");
+            }
+        }
+    }
+    if let Ok(all_btns) = doc.query_selector_all(".cad-menu-btn") {
+        for i in 0..all_btns.length() {
+            if let Some(el) = all_btns.get(i).and_then(|n| n.dyn_into::<Element>().ok()) {
+                let _ = el.class_list().remove_1("active");
+            }
+        }
+    }
+}
+
 fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
     // Right Vertical Tool Strip Buttons
     for (btn_id, tool) in [
@@ -3711,53 +3972,304 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
         }
     }
 
-    // Top Menu Bar Quick Actions
-    if let Some(btn) = doc.get_element_by_id("menu-edit-undo") {
-        let st = state.clone();
+    macro_rules! bind_menu_item {
+        ($doc:expr, $id:expr, $body:expr) => {
+            if let Some(el) = $doc.get_element_by_id($id) {
+                let doc_c = $doc.clone();
+                let cb = Closure::wrap(Box::new(move |_e: Event| {
+                    close_all_cad_menus(&doc_c);
+                    $body;
+                }) as Box<dyn FnMut(_)>);
+                let _ = el.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+                cb.forget();
+            }
+        };
+    }
+
+    // Bind Top Menu Bar Dropdown Toggles (File, Edit, View, Place, Route, Inspect, Tools)
+    for menu_name in ["file", "edit", "view", "place", "route", "inspect", "tools"] {
+        let btn_id = format!("menu-btn-{}", menu_name);
+        let dropdown_id = format!("dropdown-menu-{}", menu_name);
+        if let Some(btn) = doc.get_element_by_id(&btn_id) {
+            let doc_clone = doc.clone();
+            let dd_id = dropdown_id.clone();
+            let btn_id_clone = btn_id.clone();
+            let cb = Closure::wrap(Box::new(move |e: Event| {
+                e.stop_propagation();
+                let is_open = doc_clone
+                    .get_element_by_id(&dd_id)
+                    .map(|d| !d.class_list().contains("hidden"))
+                    .unwrap_or(false);
+
+                close_all_cad_menus(&doc_clone);
+
+                if !is_open {
+                    if let Some(d) = doc_clone.get_element_by_id(&dd_id) {
+                        let _ = d.class_list().remove_1("hidden");
+                    }
+                    if let Some(b) = doc_clone.get_element_by_id(&btn_id_clone) {
+                        let _ = b.class_list().add_1("active");
+                    }
+                }
+            }) as Box<dyn FnMut(_)>);
+            let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+            cb.forget();
+        }
+    }
+
+    // Close all menus when clicking anywhere outside
+    {
+        let doc_clone = doc.clone();
         let cb = Closure::wrap(Box::new(move |_e: Event| {
-            st.borrow_mut().perform_undo();
+            close_all_cad_menus(&doc_clone);
         }) as Box<dyn FnMut(_)>);
-        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        let _ = doc.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
         cb.forget();
     }
-    if let Some(btn) = doc.get_element_by_id("menu-view-3d") {
-        let st = state.clone();
+
+    // File Menu Items
+    bind_menu_item!(doc, "menu-action-new", {
+        if let Some(m) = doc.get_element_by_id("modal-new-project") {
+            let _ = m.class_list().remove_1("hidden");
+        }
+    });
+    bind_menu_item!(doc, "menu-action-open", {
+        if let Some(inp) = doc.get_element_by_id("home-file-input").and_then(|el| el.dyn_into::<HtmlInputElement>().ok()) {
+            inp.click();
+        }
+    });
+    let st_save = state.clone();
+    bind_menu_item!(doc, "menu-action-save", {
+        trigger_save_kicad_pcb(&st_save);
+    });
+    let st_gerb = state.clone();
+    bind_menu_item!(doc, "menu-action-gerber", {
+        trigger_gerber_export(&st_gerb);
+    });
+    let st_home = state.clone();
+    bind_menu_item!(doc, "menu-action-home", {
+        switch_view_tab(&st_home, "home");
+    });
+
+    // Edit Menu Items
+    let st_u = state.clone();
+    bind_menu_item!(doc, "menu-action-undo", {
+        st_u.borrow_mut().perform_undo();
+    });
+    let st_r = state.clone();
+    bind_menu_item!(doc, "menu-action-rotate", {
+        st_r.borrow_mut().rotate_selected_primitive();
+    });
+    let st_d = state.clone();
+    bind_menu_item!(doc, "menu-action-delete", {
+        st_d.borrow_mut().delete_selected_primitive();
+    });
+    let st_desel = state.clone();
+    bind_menu_item!(doc, "menu-action-deselect", {
+        let mut app = st_desel.borrow_mut();
+        app.selected_primitive_idx = None;
+        app.render_inspector_panel();
+        app.draw_all();
+    });
+
+    // View Menu Items
+    let st_vpcb = state.clone();
+    bind_menu_item!(doc, "menu-action-view-pcb", {
+        switch_view_tab(&st_vpcb, "pcb");
+    });
+    let st_v3d = state.clone();
+    bind_menu_item!(doc, "menu-action-view-3d", {
+        toggle_3d_mode(&mut st_v3d.borrow_mut());
+    });
+    let st_vsch = state.clone();
+    bind_menu_item!(doc, "menu-action-view-sch", {
+        switch_view_tab(&st_vsch, "schematic");
+    });
+    let st_vdiff = state.clone();
+    bind_menu_item!(doc, "menu-action-view-diff", {
+        switch_view_tab(&st_vdiff, "diff");
+    });
+    let st_vdrc = state.clone();
+    bind_menu_item!(doc, "menu-action-view-drc", {
+        switch_view_tab(&st_vdrc, "drc");
+    });
+    let st_vbom = state.clone();
+    bind_menu_item!(doc, "menu-action-view-bom", {
+        switch_view_tab(&st_vbom, "parts");
+    });
+    let st_zfit = state.clone();
+    bind_menu_item!(doc, "menu-action-zoom-fit", {
+        let mut app = st_zfit.borrow_mut();
+        if let Some(ref mut r) = app.renderer {
+            r.fit_to_board();
+        }
+        app.draw_all();
+        app.update_telemetry_hud();
+    });
+    let st_zin = state.clone();
+    bind_menu_item!(doc, "menu-action-zoom-in", {
+        let mut app = st_zin.borrow_mut();
+        if let Some(ref mut r) = app.renderer {
+            r.scale_px_per_mm = (r.scale_px_per_mm * 1.25).min(500.0);
+        }
+        app.draw_all();
+        app.update_telemetry_hud();
+    });
+    let st_zout = state.clone();
+    bind_menu_item!(doc, "menu-action-zoom-out", {
+        let mut app = st_zout.borrow_mut();
+        if let Some(ref mut r) = app.renderer {
+            r.scale_px_per_mm = (r.scale_px_per_mm * 0.8).max(1.5);
+        }
+        app.draw_all();
+        app.update_telemetry_hud();
+    });
+    let st_cont = state.clone();
+    bind_menu_item!(doc, "menu-action-contrast", {
+        cycle_high_contrast(&mut st_cont.borrow_mut());
+    });
+    let st_flip = state.clone();
+    bind_menu_item!(doc, "menu-action-flip", {
+        toggle_flip_board(&mut st_flip.borrow_mut());
+    });
+
+    // Place Menu Items
+    let st_pp = state.clone();
+    bind_menu_item!(doc, "menu-action-place-pad", {
+        st_pp.borrow_mut().set_active_tool(CadTool::PlacePad);
+    });
+    bind_menu_item!(doc, "menu-action-place-fp-lib", {
+        if let Some(m) = doc.get_element_by_id("modal-footprint-browser") {
+            let _ = m.class_list().remove_1("hidden");
+        }
+    });
+    let st_pv = state.clone();
+    bind_menu_item!(doc, "menu-action-place-via", {
+        st_pv.borrow_mut().set_active_tool(CadTool::PlaceVia);
+    });
+    let st_pz = state.clone();
+    bind_menu_item!(doc, "menu-action-place-zone", {
+        st_pz.borrow_mut().set_active_tool(CadTool::AddZone);
+    });
+    let st_pk = state.clone();
+    bind_menu_item!(doc, "menu-action-place-keepout", {
+        st_pk.borrow_mut().set_active_tool(CadTool::AddKeepout);
+    });
+    let st_pl = state.clone();
+    bind_menu_item!(doc, "menu-action-place-line", {
+        st_pl.borrow_mut().set_active_tool(CadTool::DrawLine);
+    });
+    let st_pa = state.clone();
+    bind_menu_item!(doc, "menu-action-place-arc", {
+        st_pa.borrow_mut().set_active_tool(CadTool::DrawArc);
+    });
+    let st_pc = state.clone();
+    bind_menu_item!(doc, "menu-action-place-circle", {
+        st_pc.borrow_mut().set_active_tool(CadTool::DrawCircle);
+    });
+    let st_pr = state.clone();
+    bind_menu_item!(doc, "menu-action-place-rect", {
+        st_pr.borrow_mut().set_active_tool(CadTool::DrawRect);
+    });
+    let st_py = state.clone();
+    bind_menu_item!(doc, "menu-action-place-poly", {
+        st_py.borrow_mut().set_active_tool(CadTool::DrawPoly);
+    });
+    let st_pt = state.clone();
+    bind_menu_item!(doc, "menu-action-place-text", {
+        st_pt.borrow_mut().set_active_tool(CadTool::AddText);
+    });
+    let st_pdim = state.clone();
+    bind_menu_item!(doc, "menu-action-place-dim", {
+        st_pdim.borrow_mut().set_active_tool(CadTool::AddDimension);
+    });
+    let st_po = state.clone();
+    bind_menu_item!(doc, "menu-action-place-origin", {
+        st_po.borrow_mut().set_active_tool(CadTool::PlaceOrigin);
+    });
+
+    // Route Menu Items
+    let st_rx = state.clone();
+    bind_menu_item!(doc, "menu-action-route-single", {
+        st_rx.borrow_mut().set_active_tool(CadTool::RouteTrack);
+    });
+    let st_rd = state.clone();
+    bind_menu_item!(doc, "menu-action-route-diffpair", {
+        st_rd.borrow_mut().set_active_tool(CadTool::RouteDiffPair);
+    });
+    let st_rt = state.clone();
+    bind_menu_item!(doc, "menu-action-route-tune", {
+        st_rt.borrow_mut().set_active_tool(CadTool::TuneTrackLength);
+    });
+    let st_rw = state.clone();
+    bind_menu_item!(doc, "menu-action-route-walk", {
+        let mut app = st_rw.borrow_mut();
+        app.routing_mode = RoutingMode::Walkaround;
+        app.router.mode = app.routing_mode;
+        app.update_telemetry_hud();
+    });
+    let st_rp = state.clone();
+    bind_menu_item!(doc, "menu-action-route-push", {
+        let mut app = st_rp.borrow_mut();
+        app.routing_mode = RoutingMode::PushAndShove;
+        app.router.mode = app.routing_mode;
+        app.update_telemetry_hud();
+    });
+    let st_rf = state.clone();
+    bind_menu_item!(doc, "menu-action-route-free45", {
+        let mut app = st_rf.borrow_mut();
+        app.routing_mode = RoutingMode::Free45;
+        app.router.mode = app.routing_mode;
+        app.update_telemetry_hud();
+    });
+
+    // Inspect Menu Items
+    let st_idrc = state.clone();
+    bind_menu_item!(doc, "menu-action-inspect-drc", {
+        switch_view_tab(&st_idrc, "drc");
+    });
+    let st_irun = state.clone();
+    bind_menu_item!(doc, "menu-action-inspect-run-drc", {
+        run_live_drc(&st_irun);
+    });
+    let st_im = state.clone();
+    bind_menu_item!(doc, "menu-action-inspect-measure", {
+        st_im.borrow_mut().set_active_tool(CadTool::Measure);
+    });
+    let st_ibom = state.clone();
+    bind_menu_item!(doc, "menu-action-inspect-bom", {
+        switch_view_tab(&st_ibom, "parts");
+    });
+
+    // Tools Menu Items
+    let st_tf = state.clone();
+    bind_menu_item!(doc, "menu-action-tools-fill", {
+        let mut app = st_tf.borrow_mut();
+        app.zone_display_mode = 0;
+        app.draw_all();
+    });
+    let st_to = state.clone();
+    bind_menu_item!(doc, "menu-action-tools-outline", {
+        let mut app = st_to.borrow_mut();
+        app.zone_display_mode = 1;
+        app.draw_all();
+    });
+    let st_th = state.clone();
+    bind_menu_item!(doc, "menu-action-tools-hide-zones", {
+        let mut app = st_th.borrow_mut();
+        app.zone_display_mode = 2;
+        app.draw_all();
+    });
+    let st_tg = state.clone();
+    bind_menu_item!(doc, "menu-action-tools-gerbers", {
+        trigger_gerber_export(&st_tg);
+    });
+
+    // Save Button in Topbar
+    if let Some(btn) = doc.get_element_by_id("btn-export-pcb") {
+        let st_save_btn = state.clone();
         let cb = Closure::wrap(Box::new(move |_e: Event| {
-            toggle_3d_mode(&mut st.borrow_mut());
-        }) as Box<dyn FnMut(_)>);
-        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
-        cb.forget();
-    }
-    if let Some(btn) = doc.get_element_by_id("menu-place-pad") {
-        let st = state.clone();
-        let cb = Closure::wrap(Box::new(move |_e: Event| {
-            st.borrow_mut().set_active_tool(CadTool::PlacePad);
-        }) as Box<dyn FnMut(_)>);
-        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
-        cb.forget();
-    }
-    if let Some(btn) = doc.get_element_by_id("menu-route-single") {
-        let st = state.clone();
-        let cb = Closure::wrap(Box::new(move |_e: Event| {
-            st.borrow_mut().set_active_tool(CadTool::RouteTrack);
-        }) as Box<dyn FnMut(_)>);
-        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
-        cb.forget();
-    }
-    if let Some(btn) = doc.get_element_by_id("menu-inspect-drc") {
-        let st = state.clone();
-        let cb = Closure::wrap(Box::new(move |_e: Event| {
-            switch_view_tab(&st, "drc");
-        }) as Box<dyn FnMut(_)>);
-        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
-        cb.forget();
-    }
-    if let Some(btn) = doc.get_element_by_id("menu-tools-fill") {
-        let st = state.clone();
-        let cb = Closure::wrap(Box::new(move |_e: Event| {
-            let mut app = st.borrow_mut();
-            app.zone_display_mode = 0;
-            app.draw_all();
+            trigger_save_kicad_pcb(&st_save_btn);
         }) as Box<dyn FnMut(_)>);
         let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
         cb.forget();
@@ -4580,6 +5092,80 @@ fn sync_backend_parts(state: Rc<RefCell<AppController>>) {
 
 fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
     let proj_id_saved = project_id.to_string();
+    {
+        let mut app = state.borrow_mut();
+        app.active_project = proj_id_saved.clone();
+        app.project_name = proj_id_saved.clone();
+        app.drc_items.clear();
+        app.drc_violations.clear();
+        app.selected_primitive_idx = None;
+        app.route_start_mm = None;
+        app.poly_points_mm.clear();
+        app.rebuild_gpu_buffer_with_markers();
+
+        if let Some(sel) = app
+            .doc
+            .get_element_by_id("rust-project-select")
+            .and_then(|e| e.dyn_into::<HtmlSelectElement>().ok())
+        {
+            sel.set_value(&proj_id_saved);
+        }
+        if let Some(link) = app.doc.get_element_by_id("link-3d-vrml") {
+            let href = if proj_id_saved == "cm5_minima" {
+                "/samples/cm5_minima/board.wrl"
+            } else {
+                "/samples/complex_hierarchy/board.wrl"
+            };
+            let _ = link.set_attribute("href", href);
+        }
+        if let Some(img) = app.doc.get_element_by_id("schematic-svg-img") {
+            let src = if proj_id_saved == "cm5_minima" {
+                "/samples/cm5_minima/CM5_MINIMA_3-F_Cu.svg"
+            } else {
+                "/samples/complex_hierarchy/complex_hierarchy.svg"
+            };
+            let _ = img.set_attribute("src", src);
+        }
+    }
+
+    // Check if it's a cached custom board
+    let cached_board = {
+        let app = state.borrow();
+        if let Some((ref cname, ref cboard)) = app.custom_board {
+            if cname == &proj_id_saved {
+                Some(cboard.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+    if let Some(b) = cached_board {
+        {
+            let mut app = state.borrow_mut();
+            app.rel_origin_mm = (b.bounds[0], b.bounds[3]);
+            app.board_rev_a = b.clone();
+            app.board_rev_b = b.clone();
+            app.board_diff = b.clone();
+            app.current_board = b;
+            app.undo_stack.clear();
+            app.selected_primitive_idx = None;
+            app.route_start_mm = None;
+            app.poly_points_mm.clear();
+            app.populate_net_selector();
+            app.select_net_probe(0);
+            app.rebuild_gpu_buffer_with_markers();
+            if let Some(ref mut r) = app.renderer {
+                r.fit_to_board();
+            }
+            app.draw_all();
+            app.update_telemetry_hud();
+        }
+        run_live_drc(&state);
+        return;
+    }
+
     let (url_a, url_b, drc_url) = if project_id == "cm5_minima" {
         (
             "/samples/cm5_minima/CM5_MINIMA_3.kicad_pcb",
@@ -4629,9 +5215,13 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
             run_live_drc(&st);
 
             let st2 = st.clone();
+            let proj_check2 = proj_check.clone();
             fetch_text_with_callback(&url_b_str, move |text_b| {
                 let board_b = parse_kicad_pcb_str(&text_b);
                 let mut app = st2.borrow_mut();
+                if app.active_project != proj_check2 {
+                    return;
+                }
                 let (diff_board, add, rem, unch) =
                     compute_vector_diff_boards(&app.board_rev_a, &board_b);
                 app.board_rev_b = board_b;
@@ -4646,6 +5236,7 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
 
     fetch_text_with_callback(drc_url, {
         let st = state;
+        let proj_check = proj_id_saved.clone();
         move |drc_json| {
             let mut items = Vec::new();
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&drc_json) {
@@ -4690,6 +5281,9 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
             }
 
             let mut app = st.borrow_mut();
+            if app.active_project != proj_check {
+                return;
+            }
             if let Some(badge) = app.doc.get_element_by_id("drc-count-badge") {
                 badge.set_text_content(Some(&items.len().to_string()));
             }
@@ -4724,6 +5318,27 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
             app.rebuild_gpu_buffer_with_markers();
         }
     });
+}
+
+pub fn trigger_save_kicad_pcb(state: &Rc<RefCell<AppController>>) {
+    let (kicad_str, project_name, doc) = {
+        let app = state.borrow();
+        (
+            app.current_board.export_kicad_pcb(),
+            app.project_name.clone(),
+            app.doc.clone(),
+        )
+    };
+    let encoded = js_sys::encode_uri_component(&kicad_str);
+    let href = format!("data:text/plain;charset=utf-8,{}", encoded);
+    let filename = format!("{}.kicad_pcb", project_name);
+    if let Ok(a) = doc.create_element("a") {
+        let _ = a.set_attribute("href", &href);
+        let _ = a.set_attribute("download", &filename);
+        if let Some(html_a) = a.dyn_into::<web_sys::HtmlElement>().ok() {
+            html_a.click();
+        }
+    }
 }
 
 pub fn trigger_gerber_export(state: &Rc<RefCell<AppController>>) {
@@ -4987,8 +5602,9 @@ pub fn load_kicad_pcb_string(state: &Rc<RefCell<AppController>>, content: &str, 
     let dt = js_sys::Date::now() - t0;
     {
         let mut app = state.borrow_mut();
+        app.custom_board = Some((project_name.to_string(), board.clone()));
         app.project_name = project_name.to_string();
-        app.active_project = "custom".to_string();
+        app.active_project = project_name.to_string();
         app.rel_origin_mm = (board.bounds[0], board.bounds[3]);
         app.board_rev_a = board.clone();
         app.board_rev_b = board.clone();
@@ -5243,6 +5859,25 @@ pub fn setup_home_and_project_hub(doc: &Document, state: Rc<RefCell<AppControlle
             switch_view_tab(&st, "pcb");
         }) as Box<dyn FnMut(_)>);
         let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // Custom projects container row click
+    if let Some(container) = doc.get_element_by_id("home-custom-projects-container") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |_e: web_sys::Event| {
+            let active_proj = {
+                let app = st.borrow();
+                if let Some((ref cname, _)) = app.custom_board {
+                    cname.clone()
+                } else {
+                    app.active_project.clone()
+                }
+            };
+            fetch_project_boards(st.clone(), &active_proj);
+            switch_view_tab(&st, "pcb");
+        }) as Box<dyn FnMut(_)>);
+        let _ = container.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
         cb.forget();
     }
 

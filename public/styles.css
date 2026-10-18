@@ -56,21 +56,87 @@ html, body {
   gap: 1px;
 }
 
+.cad-menu-dropdown-wrap {
+  position: relative;
+  display: inline-block;
+}
+
 .cad-menu-btn {
   height: 22px;
-  padding: 0 7px;
+  padding: 0 8px;
   background: transparent;
   color: #c9d1d9;
   border: 1px solid transparent;
-  border-radius: 2px;
-  font-size: 11px;
+  border-radius: 3px;
+  font-size: 11.5px;
+  font-weight: 500;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  transition: all 0.1s ease;
+  user-select: none;
 }
-.cad-menu-btn:hover {
-  background-color: #262a34;
+.cad-menu-btn:hover,
+.cad-menu-btn.active {
+  background-color: #21262d;
   color: #ffffff;
+  border-color: #30363d;
+}
+
+.cad-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 230px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cad-menu-dropdown.hidden {
+  display: none !important;
+}
+
+.cad-menu-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  color: #c9d1d9;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.08s ease, color 0.08s ease;
+  white-space: nowrap;
+}
+
+.cad-menu-dropdown-item:hover {
+  background: #1f6feb;
+  color: #ffffff;
+}
+
+.cad-menu-dropdown-item .cad-menu-shortcut {
+  font-size: 10px;
+  color: #8b949e;
+  margin-left: 18px;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.cad-menu-dropdown-item:hover .cad-menu-shortcut {
+  color: #dbeafe;
+}
+
+.cad-menu-divider {
+  height: 1px;
+  background: #252d38;
+  margin: 4px 2px;
 }
 
 /* Row 2: Top Action & Auxiliary Parameter Toolbar (30px) */

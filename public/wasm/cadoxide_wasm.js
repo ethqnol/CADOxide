@@ -109,6 +109,10 @@ function __wbg_get_imports() {
         __wbg_compileShader_ac457ada9042f08e: function(arg0, arg1) {
             arg0.compileShader(arg1);
         },
+        __wbg_contains_db96d32718835087: function(arg0, arg1, arg2) {
+            const ret = arg0.contains(getStringFromWasm0(arg1, arg2));
+            return ret;
+        },
         __wbg_createBuffer_af6c411fe2b091f8: function(arg0) {
             const ret = arg0.createBuffer();
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
