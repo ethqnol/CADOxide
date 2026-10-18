@@ -1,7 +1,12 @@
+pub mod drc_engine;
+pub mod footprint_library;
+pub mod gerber_exporter;
 pub mod gl_renderer;
 pub mod overlay_renderer;
 pub mod parser;
 
+use drc_engine::DrcViolation;
+use footprint_library::{get_standard_ipc_library, FootprintDefinition};
 use gl_renderer::RustGpuRenderer;
 use overlay_renderer::{render_cad_overlay, OverlayConfig};
 use parser::{
@@ -136,8 +141,21 @@ pub struct AppController {
     pub sch_last_mouse: (f64, f64),
 
     pub drc_items: Vec<DrcItem>,
+    pub drc_violations: Vec<DrcViolation>,
+    pub drc_filter: String,
+    pub min_clearance_rule_mm: f32,
+    pub min_track_width_rule_mm: f32,
+    pub min_drill_clearance_rule_mm: f32,
+
     pub parts_catalog: Vec<PartLibraryEntry>,
     pub parts_filter: String,
+
+    pub footprint_library: Vec<FootprintDefinition>,
+    pub selected_footprint_id: String,
+    pub footprint_category_filter: String,
+    pub footprint_search_query: String,
+    pub active_footprint_to_place: Option<FootprintDefinition>,
+    pub next_ref_indices: std::collections::HashMap<String, usize>,
 }
 
 impl AppController {
@@ -385,6 +403,7 @@ impl AppController {
                 is_zone_preview: self.active_tool == CadTool::AddZone
                     || self.active_tool == CadTool::AddKeepout,
                 is_keepout_preview: self.active_tool == CadTool::AddKeepout,
+                is_dragging: self.is_dragging || self.is_dragging_primitive,
             };
             render_cad_overlay(&self.doc, r, base, &cfg);
         }
@@ -646,18 +665,44 @@ impl AppController {
                     );
                 }
                 CadTool::PlacePad => {
-                    push_raw(
-                        &mut combined,
-                        &mut count,
-                        cx,
-                        cy,
-                        cx,
-                        cy,
-                        1.4,
-                        0.9,
-                        self.active_draw_layer as f32,
-                        2.0,
-                    );
+                    if let Some(ref fp) = self.active_footprint_to_place {
+                        for pad in &fp.pads {
+                            let px = cx + pad.rel_x;
+                            let py = cy + pad.rel_y;
+                            let layer = if pad.is_tht {
+                                (LAYER_F_CU | LAYER_B_CU) as f32
+                            } else {
+                                self.active_draw_layer as f32
+                            };
+                            let prim_type = if pad.is_tht { 1.0 } else { 2.0 };
+                            let h = if pad.is_tht { pad.drill } else { pad.height };
+                            push_raw(
+                                &mut combined,
+                                &mut count,
+                                px,
+                                py,
+                                px,
+                                py,
+                                pad.width,
+                                h,
+                                layer,
+                                prim_type,
+                            );
+                        }
+                    } else {
+                        push_raw(
+                            &mut combined,
+                            &mut count,
+                            cx,
+                            cy,
+                            cx,
+                            cy,
+                            1.4,
+                            0.9,
+                            self.active_draw_layer as f32,
+                            2.0,
+                        );
+                    }
                 }
                 CadTool::DrawLine | CadTool::DrawArc => {
                     if let Some((sx, sy, _)) = self.route_start_mm {
@@ -1213,8 +1258,19 @@ pub fn start_cadoxide_app() {
         sch_dragging: false,
         sch_last_mouse: (0.0, 0.0),
         drc_items: Vec::new(),
+        drc_violations: Vec::new(),
+        drc_filter: "all".to_string(),
+        min_clearance_rule_mm: 0.20,
+        min_track_width_rule_mm: 0.15,
+        min_drill_clearance_rule_mm: 0.35,
         parts_catalog: default_parts_catalog(),
         parts_filter: String::new(),
+        footprint_library: get_standard_ipc_library(),
+        selected_footprint_id: "R_0805_2012Metric".to_string(),
+        footprint_category_filter: "All".to_string(),
+        footprint_search_query: String::new(),
+        active_footprint_to_place: None,
+        next_ref_indices: std::collections::HashMap::new(),
     }));
 
     build_shell_dom(&doc, &root, state.clone());
@@ -1270,74 +1326,83 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
           <!-- Row 2: KiCad Auxiliary & Action Toolbar (Track Width, Via Size, Grid, Zoom, Zone Fill, 3D) -->
           <div class="cad-param-bar">
             <div class="cad-menubar-group">
-              <a id="btn-export-pcb" href="#" download="edited_board.kicad_pcb" class="cad-btn" title="Save / Download .kicad_pcb">Save .kicad_pcb</a>
-              <a id="link-3d-vrml" href="/samples/complex_hierarchy/board.wrl" download class="cad-btn" title="Export 3D VRML (.wrl)">Export .wrl</a>
+              <a id="btn-export-pcb" href="#" download="edited_board.kicad_pcb" class="cad-btn" title="Save / Download .kicad_pcb">💾 Save</a>
+              <a id="btn-export-gerbers" href="#" class="cad-btn" style="background:#1d3d2a;border-color:#2e7d32;color:#86efac;font-weight:700;" title="Generate &amp; Download Complete RS-274X Gerber &amp; NC Drill Fabrication ZIP">📦 Gerbers</a>
+              <button id="btn-open-fp-browser" class="cad-btn" style="background:#1c2d42;border-color:#388bfd;color:#79b8ff;font-weight:600;" title="Browse IPC-7351 Standard Component Footprints (A)">🖵 Footprint (A)</button>
               <div class="cad-divider-v"></div>
-              <button id="btn-undo" class="cad-btn" title="Undo (Ctrl+Z)">↶ Undo</button>
-              <button id="btn-rotate-selected" class="cad-btn" title="Rotate Selected 90° (R)">↻ Rot 90°</button>
-              <button id="btn-delete-selected" class="cad-btn cad-btn-danger" title="Delete Selected Item (Del)">✕ Delete</button>
+              <button id="btn-undo" class="cad-btn" title="Undo (Ctrl+Z)">↶</button>
+              <button id="btn-rotate-selected" class="cad-btn" title="Rotate Selected 90° (R)">↻</button>
+              <button id="btn-delete-selected" class="cad-btn cad-btn-danger" title="Delete Selected Item (Del)">✕</button>
               <div class="cad-divider-v"></div>
-              <button id="btn-zoom-in" class="cad-btn" title="Zoom In (+)">Zoom +</button>
-              <button id="btn-zoom-out" class="cad-btn" title="Zoom Out (-)">Zoom −</button>
-              <button id="btn-zoom-fit" class="cad-btn" title="Zoom to Fit Board (Home)">Fit Board</button>
+              <button id="btn-zoom-in" class="cad-btn" title="Zoom In (+)">🔍+</button>
+              <button id="btn-zoom-out" class="cad-btn" title="Zoom Out (-)">🔍−</button>
+              <button id="btn-zoom-fit" class="cad-btn" title="Zoom to Fit Board (Home)">⛶ Fit</button>
               <div class="cad-divider-v"></div>
 
               <span class="cad-param-label">Layer:</span>
-              <select id="select-draw-layer" class="cad-select" title="Active Drawing / Routing Layer">
-                <option value="1">F.Cu (Front Copper)</option>
-                <option value="4096">In1.Cu (Inner 1)</option>
-                <option value="8192">In2.Cu (Inner 2)</option>
-                <option value="2">B.Cu (Back Copper)</option>
+              <select id="select-draw-layer" class="cad-select" style="max-width:96px;" title="Active Drawing / Routing Layer">
+                <option value="1">F.Cu</option>
+                <option value="4096">In1.Cu</option>
+                <option value="8192">In2.Cu</option>
+                <option value="2">B.Cu</option>
                 <option value="16384">F.Paste</option>
                 <option value="32768">B.Paste</option>
                 <option value="8">F.Silkscreen</option>
                 <option value="16">B.Silkscreen</option>
                 <option value="32">F.Mask</option>
                 <option value="64">B.Mask</option>
-                <option value="1048576">User.Drawings</option>
-                <option value="2097152">User.Comments</option>
+                <option value="1048576">Drawings</option>
+                <option value="2097152">Comments</option>
                 <option value="4">Edge.Cuts</option>
                 <option value="4194304">Margin</option>
-                <option value="65536">F.Courtyard</option>
-                <option value="131072">B.Courtyard</option>
+                <option value="65536">F.CrtYd</option>
+                <option value="131072">B.CrtYd</option>
                 <option value="262144">F.Fab</option>
                 <option value="524288">B.Fab</option>
               </select>
 
-              <span class="cad-param-label">Track:</span>
-              <select id="select-track-width" class="cad-select" title="Pre-defined Track Width">
-                <option value="0.127">Track: 0.127 mm (5 mil)</option>
-                <option value="0.200">Track: 0.200 mm (8 mil)</option>
-                <option value="0.250" selected>Track: 0.250 mm (10 mil)</option>
-                <option value="0.400">Track: 0.400 mm (16 mil)</option>
-                <option value="0.800">Track: 0.800 mm (31 mil)</option>
+              <span class="cad-param-label">W:</span>
+              <select id="select-track-width" class="cad-select" style="max-width:88px;" title="Track Width">
+                <option value="0.127">0.127 mm</option>
+                <option value="0.200">0.200 mm</option>
+                <option value="0.250" selected>0.250 mm</option>
+                <option value="0.400">0.400 mm</option>
+                <option value="0.800">0.800 mm</option>
               </select>
 
               <span class="cad-param-label">Via:</span>
-              <select id="select-via-size" class="cad-select" title="Pre-defined Via Size / Drill">
-                <option value="0.45,0.20">Via: 0.45 / 0.20 mm</option>
-                <option value="0.60,0.30" selected>Via: 0.60 / 0.30 mm</option>
-                <option value="0.80,0.40">Via: 0.80 / 0.40 mm</option>
+              <select id="select-via-size" class="cad-select" style="max-width:95px;" title="Via Size / Drill">
+                <option value="0.45,0.20">0.45/0.20 mm</option>
+                <option value="0.60,0.30" selected>0.60/0.30 mm</option>
+                <option value="0.80,0.40">0.80/0.40 mm</option>
               </select>
 
               <span class="cad-param-label">Grid:</span>
-              <select id="select-grid-snap" class="cad-select" title="Grid Step Size">
-                <option value="0.05">Grid: 0.05 mm (2 mil)</option>
-                <option value="0.10">Grid: 0.10 mm (4 mil)</option>
-                <option value="0.25" selected>Grid: 0.25 mm (10 mil)</option>
-                <option value="0.50">Grid: 0.50 mm (20 mil)</option>
-                <option value="1.00">Grid: 1.00 mm (39.4 mil)</option>
+              <select id="select-grid-snap" class="cad-select" style="max-width:85px;" title="Grid Step Size">
+                <option value="0.05">0.05 mm</option>
+                <option value="0.10">0.10 mm</option>
+                <option value="0.25" selected>0.25 mm</option>
+                <option value="0.50">0.50 mm</option>
+                <option value="1.00">1.00 mm</option>
               </select>
+
+              <span class="cad-param-label">Net:</span>
+              <select id="rust-net-select" class="cad-select" style="max-width:115px;" title="Highlight electrical net across all layers">
+                <option value="0">[All Nets]</option>
+              </select>
+
+              <div class="cad-divider-v"></div>
+              <button id="btn-3d-stackup" class="cad-btn" title="Toggle 3D Multi-Layer Stackup Viewer (3)">3D</button>
             </div>
 
             <!-- Contextual 3D Stackup Controls -->
             <div id="toolbar-3d-controls" class="hidden cad-menubar-group">
               <div class="cad-divider-v"></div>
-              <button id="btn-3d-drag-mode" class="cad-btn cad-btn-active" title="Toggle Left-Drag between 3D Orbit and 3D Pan">Left-Drag: Orbit 3D</button>
+              <button id="btn-3d-drag-mode" class="cad-btn cad-btn-active" title="Toggle Left-Drag between 3D Orbit and 3D Pan">Orbit 3D</button>
               <button id="btn-3d-iso" class="cad-btn">Iso</button>
               <button id="btn-3d-top" class="cad-btn">Top</button>
               <button id="btn-3d-flip" class="cad-btn">Flip</button>
-              <input id="input-3d-explode" type="range" min="20" max="250" value="100" style="width:60px;accent-color:#388bfd;cursor:pointer;" />
+              <input id="input-3d-explode" type="range" min="20" max="250" value="100" style="width:55px;accent-color:#388bfd;cursor:pointer;" />
             </div>
 
             <!-- Contextual Diff Controls -->
@@ -1345,14 +1410,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               <div class="cad-divider-v"></div>
               <button id="btn-diff-boolean" class="cad-btn cad-btn-active">Overlay</button>
               <button id="btn-diff-wipe" class="cad-btn">Split Wipe</button>
-              <input id="input-wipe-slider" type="range" min="0" max="100" value="50" style="width:70px;accent-color:#388bfd;cursor:pointer;" />
-            </div>
-
-            <div class="cad-menubar-group">
-              <select id="rust-net-select" class="cad-select" style="width:170px;" title="Highlight electrical net across all layers">
-                <option value="0">Net Filter: All Nets</option>
-              </select>
-              <button id="btn-3d-stackup" class="cad-btn" title="Toggle 3D Multi-Layer Stackup Viewer (3)">3D Viewer (3)</button>
+              <input id="input-wipe-slider" type="range" min="0" max="100" value="50" style="width:65px;accent-color:#388bfd;cursor:pointer;" />
             </div>
           </div>
 
@@ -1407,11 +1465,25 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                 </div>
               </div>
 
-              <!-- DRC Audit Table View -->
+              <!-- DRC Interactive Workbench View -->
               <div id="drc-view-panel" class="hidden" style="position:absolute;inset:0;display:flex;flex-direction:column;background:#121418;z-index:30;">
-                <div class="cad-panel-header" style="height:28px;padding:0 14px;">
-                  <span>DESIGN RULE CHECK (DRC) VIOLATIONS</span>
-                  <span style="color:#8e96a8;font-weight:400;">Click any violation row to center &amp; zoom PCB viewport</span>
+                <div class="cad-panel-header" style="height:38px;padding:0 14px;background:#161922;border-bottom:1px solid #282d3b;display:flex;align-items:center;justify-content:space-between;">
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-weight:700;color:#f1f5f9;">DRC RULE CHECKER</span>
+                    <button id="btn-run-drc" class="cad-btn" style="background:#1e3a5f;border-color:#388bfd;color:#79b8ff;font-weight:700;" title="Run live DRC rule check across all copper layers, pads, and nets">▶ Run DRC</button>
+                    <div class="cad-divider-v"></div>
+                    <span class="cad-param-label">Min Spacing:</span>
+                    <input id="input-drc-clearance" type="number" step="0.05" min="0.05" max="2.0" value="0.20" class="cad-input" style="width:55px;" />
+                    <span style="font-size:10px;color:#8892a4;">mm</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:5px;">
+                    <button class="drc-filter-btn active" data-filter="all">All (<span id="drc-cnt-all">0</span>)</button>
+                    <button class="drc-filter-btn" data-filter="error" style="color:#f87171;">Errors (<span id="drc-cnt-err">0</span>)</button>
+                    <button class="drc-filter-btn" data-filter="warning" style="color:#fbbf24;">Warnings (<span id="drc-cnt-warn">0</span>)</button>
+                    <button class="drc-filter-btn" data-filter="Clearance">Clearance</button>
+                    <button class="drc-filter-btn" data-filter="Short">Shorts</button>
+                    <button class="drc-filter-btn" data-filter="Unconnected">Unconnected</button>
+                  </div>
                 </div>
                 <div id="drc-list-container" style="flex:1;overflow-y:auto;"></div>
               </div>
@@ -1632,8 +1704,48 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                 Ready — Press Spacebar to zero dx/dy, X to Route, Z for Zone, 7 for Length Tune, H for High-Contrast, F to Flip
               </div>
               <div id="rust-hud-stats" class="cad-status-cell" style="border-right:none;color:#949eb0;">2D Ortho | 0 prims</div>
-            </div>
           </footer>
+
+          <!-- IPC-7351 Standard Footprint Library Browser Modal -->
+          <div id="modal-footprint-browser" class="cad-modal-backdrop hidden">
+            <div class="cad-modal-window">
+              <div class="cad-modal-header">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3H14V13H2V3Z" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="5" width="2.5" height="6" fill="currentColor"/><rect x="9.5" y="5" width="2.5" height="6" fill="currentColor"/></svg>
+                  <span>IPC-7351 Standard Footprint Library Browser</span>
+                </div>
+                <button id="btn-close-fp-modal" class="cad-btn" style="padding:2px 8px;font-size:14px;">✕</button>
+              </div>
+              <div class="cad-modal-body">
+                <!-- Category Column -->
+                <div class="cad-fp-cat-list" id="fp-cat-list">
+                  <div class="cad-fp-cat-item active" data-cat="All">All Categories</div>
+                  <div class="cad-fp-cat-item" data-cat="Passives">Passives (R/C/L)</div>
+                  <div class="cad-fp-cat-item" data-cat="Diodes &amp; LEDs">Diodes &amp; LEDs</div>
+                  <div class="cad-fp-cat-item" data-cat="Transistors &amp; Regulators">Transistors &amp; Regulators</div>
+                  <div class="cad-fp-cat-item" data-cat="ICs &amp; Logic">ICs &amp; Logic Packages</div>
+                  <div class="cad-fp-cat-item" data-cat="Connectors &amp; THT">Connectors &amp; THT</div>
+                </div>
+                <!-- List Column -->
+                <div class="cad-fp-grid-col">
+                  <div style="padding:8px;border-bottom:1px solid #242834;">
+                    <input id="input-fp-search" type="text" placeholder="Search footprint name, pitch..." class="cad-input" style="width:100%;box-sizing:border-box;" />
+                  </div>
+                  <div id="fp-items-list" style="flex:1;overflow-y:auto;"></div>
+                </div>
+                <!-- Preview Column -->
+                <div class="cad-fp-preview-col" id="fp-preview-panel">
+                  <div id="fp-preview-svg-container" style="display:flex;align-items:center;justify-content:center;min-height:220px;border-radius:4px;border:1px solid #222734;background:#101217;"></div>
+                  <div id="fp-detail-specs" style="margin-top:14px;display:flex;flex-direction:column;gap:6px;"></div>
+                </div>
+              </div>
+              <div class="cad-modal-footer">
+                <span id="fp-selected-hint" style="margin-right:auto;font-size:11px;color:#8892a4;">Select a footprint to inspect specifications</span>
+                <button id="btn-cancel-fp-modal" class="cad-btn">Cancel</button>
+                <button id="btn-confirm-place-fp" class="cad-btn" style="background:#1d4ed8;border-color:#3b82f6;color:#ffffff;font-weight:700;">Place Footprint on PCB</button>
+              </div>
+            </div>
+          </div>
         </div>
         "##,
     );
@@ -1945,10 +2057,25 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                         .unwrap_or(1);
                     app.push_undo();
                     let layer = app.active_draw_layer;
-                    let idx = app.current_board.add_primitive(
-                        snapped.0, snapped.1, snapped.0, snapped.1, 1.4, 0.9, layer, net_id, 2.0,
-                    );
-                    app.selected_primitive_idx = Some(idx);
+                    if let Some(ref fp) = app.active_footprint_to_place.clone() {
+                        let prefix = fp.ref_prefix.clone();
+                        let ref_idx = app.next_ref_indices.entry(prefix).or_insert(1);
+                        let curr_idx = *ref_idx;
+                        *ref_idx += 1;
+                        fp.instantiate_into_board(
+                            &mut app.current_board,
+                            snapped.0,
+                            snapped.1,
+                            layer,
+                            net_id,
+                            curr_idx,
+                        );
+                    } else {
+                        let idx = app.current_board.add_primitive(
+                            snapped.0, snapped.1, snapped.0, snapped.1, 1.4, 0.9, layer, net_id, 2.0,
+                        );
+                        app.selected_primitive_idx = Some(idx);
+                    }
                     app.populate_net_selector();
                     app.rebuild_gpu_buffer_with_markers();
                     app.render_inspector_panel();
@@ -3378,27 +3505,152 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
         cb.forget();
     }
 
-    // Clicking a DRC row flies the GPU camera to that violation
+    // Gerber Export Button
+    if let Some(btn) = doc.get_element_by_id("btn-export-gerbers") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            e.prevent_default();
+            trigger_gerber_export(&st);
+        }) as Box<dyn FnMut(_)>);
+        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // Footprint Browser Modal Triggers
+    if let Some(btn) = doc.get_element_by_id("btn-open-fp-browser") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |_e: Event| {
+            open_footprint_modal(&st);
+        }) as Box<dyn FnMut(_)>);
+        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+    for id in ["btn-close-fp-modal", "btn-cancel-fp-modal"] {
+        if let Some(btn) = doc.get_element_by_id(id) {
+            let st = state.clone();
+            let cb = Closure::wrap(Box::new(move |_e: Event| {
+                close_footprint_modal(&st);
+            }) as Box<dyn FnMut(_)>);
+            let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+            cb.forget();
+        }
+    }
+    if let Some(btn) = doc.get_element_by_id("btn-confirm-place-fp") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |_e: Event| {
+            let mut app = st.borrow_mut();
+            let sel_id = app.selected_footprint_id.clone();
+            let fp = app.footprint_library.iter().find(|f| f.id == sel_id).cloned();
+            if let Some(f) = fp {
+                app.active_footprint_to_place = Some(f);
+                app.set_active_tool(CadTool::PlacePad);
+            }
+            drop(app);
+            close_footprint_modal(&st);
+        }) as Box<dyn FnMut(_)>);
+        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // Footprint Search & Category Click Handlers
+    if let Some(inp) = doc.get_element_by_id("input-fp-search") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            if let Some(input) = e.target().and_then(|t| t.dyn_into::<HtmlInputElement>().ok()) {
+                st.borrow_mut().footprint_search_query = input.value();
+                render_footprint_modal_content(&st);
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = inp.add_event_listener_with_callback("input", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+    if let Some(cat_list) = doc.get_element_by_id("fp-cat-list") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            if let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
+                if let Some(item) = el.closest(".cad-fp-cat-item").ok().flatten() {
+                    if let Some(cat) = item.get_attribute("data-cat") {
+                        st.borrow_mut().footprint_category_filter = cat;
+                        render_footprint_modal_content(&st);
+                    }
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = cat_list.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+    if let Some(items_list) = doc.get_element_by_id("fp-items-list") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            if let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
+                if let Some(item) = el.closest(".cad-fp-item").ok().flatten() {
+                    if let Some(id) = item.get_attribute("data-fp-id") {
+                        st.borrow_mut().selected_footprint_id = id;
+                        render_footprint_modal_content(&st);
+                    }
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = items_list.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // DRC Workbench Run & Filter Controls
+    if let Some(btn) = doc.get_element_by_id("btn-run-drc") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |_e: Event| {
+            run_live_drc(&st);
+        }) as Box<dyn FnMut(_)>);
+        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+    if let Some(inp) = doc.get_element_by_id("input-drc-clearance") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            if let Some(input) = e.target().and_then(|t| t.dyn_into::<HtmlInputElement>().ok()) {
+                if let Ok(val) = input.value().parse::<f32>() {
+                    st.borrow_mut().min_clearance_rule_mm = val.clamp(0.05, 5.0);
+                    run_live_drc(&st);
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = inp.add_event_listener_with_callback("change", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+    if let Some(drc_panel) = doc.get_element_by_id("drc-view-panel") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            if let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
+                if let Some(btn) = el.closest(".drc-filter-btn").ok().flatten() {
+                    if let Some(f) = btn.get_attribute("data-filter") {
+                        st.borrow_mut().drc_filter = f;
+                        render_drc_workbench(&st);
+                    }
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = drc_panel.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // Clicking a DRC row flies the GPU camera to that exact violation coordinate
     if let Some(drc_list) = doc.get_element_by_id("drc-list-container") {
         let st = state.clone();
         let cb = Closure::wrap(Box::new(move |e: Event| {
             if let Some(el) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
                 if let Some(row) = el.closest(".drc-row").ok().flatten() {
-                    if let Some(idx_str) = row.get_attribute("data-drc-idx") {
-                        if let Ok(idx) = idx_str.parse::<usize>() {
-                            let coords = st.borrow().drc_items.get(idx).map(|d| (d.x, d.y));
-                            if let Some((vx, vy)) = coords {
-                                switch_view_tab(&st, "pcb");
-                                if vx > 1.0 && vy > 1.0 {
-                                    let mut app = st.borrow_mut();
-                                    if let Some(ref mut r) = app.renderer {
-                                        r.center_mm = (vx, vy);
-                                        r.scale_px_per_mm = 26.0;
-                                    }
-                                    app.draw_all();
-                                    app.update_telemetry_hud();
-                                }
+                    let maybe_x = row.get_attribute("data-drc-x").and_then(|s| s.parse::<f32>().ok());
+                    let maybe_y = row.get_attribute("data-drc-y").and_then(|s| s.parse::<f32>().ok());
+                    if let (Some(vx), Some(vy)) = (maybe_x, maybe_y) {
+                        switch_view_tab(&st, "pcb");
+                        if vx > 1.0 && vy > 1.0 {
+                            let mut app = st.borrow_mut();
+                            if let Some(ref mut r) = app.renderer {
+                                r.center_mm = (vx, vy);
+                                r.scale_px_per_mm = 24.0;
                             }
+                            app.draw_all();
+                            app.update_telemetry_hud();
                         }
                     }
                 }
@@ -3581,6 +3833,11 @@ pub fn switch_view_tab(state: &Rc<RefCell<AppController>>, mode: &str) {
         app.draw_all();
     }
     app.update_telemetry_hud();
+
+    if mode == "drc" {
+        drop(app);
+        render_drc_workbench(state);
+    }
 }
 
 fn render_parts_list(state: &Rc<RefCell<AppController>>) {
@@ -3692,6 +3949,8 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
                 app.update_telemetry_hud();
             }
 
+            run_live_drc(&st);
+
             let st2 = st.clone();
             fetch_text_with_callback(&url_b_str, move |text_b| {
                 let board_b = parse_kicad_pcb_str(&text_b);
@@ -3788,6 +4047,259 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
             app.rebuild_gpu_buffer_with_markers();
         }
     });
+}
+
+pub fn trigger_gerber_export(state: &Rc<RefCell<AppController>>) {
+    let (zip_bytes, project_name, doc) = {
+        let app = state.borrow();
+        let bytes = gerber_exporter::export_complete_fabrication_zip(&app.current_board, &app.active_project);
+        (bytes, app.active_project.clone(), app.doc.clone())
+    };
+
+    let b64 = gerber_exporter::to_base64(&zip_bytes);
+    let href = format!("data:application/zip;base64,{}", b64);
+    let filename = format!("{}_Fabrication_Gerbers.zip", project_name);
+
+    if let Ok(a) = doc.create_element("a") {
+        let _ = a.set_attribute("href", &href);
+        let _ = a.set_attribute("download", &filename);
+        if let Some(html_a) = a.dyn_into::<web_sys::HtmlElement>().ok() {
+            html_a.click();
+        }
+    }
+}
+
+pub fn run_live_drc(state: &Rc<RefCell<AppController>>) {
+    let violations = {
+        let app = state.borrow();
+        drc_engine::run_full_drc(
+            &app.current_board,
+            app.min_clearance_rule_mm,
+            app.min_track_width_rule_mm,
+            app.min_drill_clearance_rule_mm,
+        )
+    };
+
+    let mut drc_items = Vec::with_capacity(violations.len());
+    for v in &violations {
+        drc_items.push(DrcItem {
+            description: v.title.clone(),
+            severity: v.severity.clone(),
+            type_name: v.rule_type.clone(),
+            x: v.x,
+            y: v.y,
+        });
+    }
+
+    {
+        let mut app = state.borrow_mut();
+        app.drc_items = drc_items;
+        app.drc_violations = violations;
+        app.rebuild_gpu_buffer_with_markers();
+    }
+
+    render_drc_workbench(state);
+}
+
+pub fn render_drc_workbench(state: &Rc<RefCell<AppController>>) {
+    let app = state.borrow();
+    let total = app.drc_violations.len();
+    let errors = app.drc_violations.iter().filter(|v| v.severity == "error").count();
+    let warnings = app.drc_violations.iter().filter(|v| v.severity == "warning").count();
+
+    if let Some(b) = app.doc.get_element_by_id("drc-count-badge") {
+        b.set_text_content(Some(&total.to_string()));
+    }
+    if let Some(b) = app.doc.get_element_by_id("drc-cnt-all") {
+        b.set_text_content(Some(&total.to_string()));
+    }
+    if let Some(b) = app.doc.get_element_by_id("drc-cnt-err") {
+        b.set_text_content(Some(&errors.to_string()));
+    }
+    if let Some(b) = app.doc.get_element_by_id("drc-cnt-warn") {
+        b.set_text_content(Some(&warnings.to_string()));
+    }
+
+    if let Ok(buttons) = app.doc.query_selector_all(".drc-filter-btn") {
+        for i in 0..buttons.length() {
+            if let Some(btn) = buttons.get(i).and_then(|n| n.dyn_into::<Element>().ok()) {
+                let f = btn.get_attribute("data-filter").unwrap_or_default();
+                if f == app.drc_filter {
+                    btn.set_class_name("drc-filter-btn active");
+                } else {
+                    btn.set_class_name("drc-filter-btn");
+                }
+            }
+        }
+    }
+
+    if let Some(list_el) = app.doc.get_element_by_id("drc-list-container") {
+        let filter = app.drc_filter.as_str();
+        let filtered: Vec<&DrcViolation> = app
+            .drc_violations
+            .iter()
+            .filter(|v| match filter {
+                "all" => true,
+                "error" => v.severity == "error",
+                "warning" => v.severity == "warning",
+                other => v.rule_type == other,
+            })
+            .collect();
+
+        if filtered.is_empty() {
+            list_el.set_inner_html(
+                r#"<div style="padding:40px;text-align:center;color:#64748b;font-size:12px;">
+                     <div style="font-size:26px;margin-bottom:8px;color:#10b981;">✓</div>
+                     <div style="font-weight:600;color:#cbd5e1;">Zero DRC Violations Found</div>
+                     <div style="margin-top:4px;">No clearance conflicts, shorts, or unrouted pins for this filter.</div>
+                   </div>"#,
+            );
+            return;
+        }
+
+        let mut html = String::with_capacity(filtered.len() * 450);
+        for v in filtered {
+            let is_err = v.severity == "error";
+            let badge_bg = if is_err { "rgba(239, 68, 68, 0.15)" } else { "rgba(245, 158, 11, 0.15)" };
+            let badge_color = if is_err { "#f87171" } else { "#fbbf24" };
+            let badge_border = if is_err { "rgba(239, 68, 68, 0.3)" } else { "rgba(245, 158, 11, 0.3)" };
+
+            html.push_str(&format!(
+                r#"<div data-drc-x="{x}" data-drc-y="{y}" class="drc-row cad-table-row" style="cursor:pointer;padding:10px 14px;border-bottom:1px solid #1e222d;display:flex;align-items:center;justify-content:space-between;">
+                     <div style="display:flex;align-items:flex-start;gap:12px;">
+                       <span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;background:{badge_bg};color:{badge_color};border:1px solid {badge_border};text-transform:uppercase;">{sev}</span>
+                       <div>
+                         <div style="font-size:12px;font-weight:600;color:#f1f5f9;">{title}</div>
+                         <div style="font-size:11px;color:#94a3b8;margin-top:2px;">{details}</div>
+                         <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748b;margin-top:3px;">Location: ({x:.3} mm, {y:.3} mm) | Layer: {layer}</div>
+                       </div>
+                     </div>
+                     <button class="cad-btn" style="font-size:10px;color:#38bdf8;border-color:#0284c7;background:#0c4a6e;flex-shrink:0;">Zoom →</button>
+                   </div>"#,
+                x = v.x,
+                y = v.y,
+                badge_bg = badge_bg,
+                badge_color = badge_color,
+                badge_border = badge_border,
+                sev = v.severity,
+                title = v.title,
+                details = v.details,
+                layer = v.layer_name,
+            ));
+        }
+        list_el.set_inner_html(&html);
+    }
+}
+
+pub fn open_footprint_modal(state: &Rc<RefCell<AppController>>) {
+    let app = state.borrow();
+    if let Some(m) = app.doc.get_element_by_id("modal-footprint-browser") {
+        let _ = m.class_list().remove_1("hidden");
+    }
+    drop(app);
+    render_footprint_modal_content(state);
+}
+
+pub fn close_footprint_modal(state: &Rc<RefCell<AppController>>) {
+    let app = state.borrow();
+    if let Some(m) = app.doc.get_element_by_id("modal-footprint-browser") {
+        let _ = m.class_list().add_1("hidden");
+    }
+}
+
+pub fn render_footprint_modal_content(state: &Rc<RefCell<AppController>>) {
+    let app = state.borrow();
+    let cat_filter = app.footprint_category_filter.clone();
+    let search = app.footprint_search_query.to_lowercase();
+    let sel_id = app.selected_footprint_id.clone();
+
+    if let Ok(items) = app.doc.query_selector_all(".cad-fp-cat-item") {
+        for i in 0..items.length() {
+            if let Some(item) = items.get(i).and_then(|n| n.dyn_into::<Element>().ok()) {
+                let cat = item.get_attribute("data-cat").unwrap_or_default();
+                if cat == cat_filter {
+                    item.set_class_name("cad-fp-cat-item active");
+                } else {
+                    item.set_class_name("cad-fp-cat-item");
+                }
+            }
+        }
+    }
+
+    let filtered: Vec<&FootprintDefinition> = app
+        .footprint_library
+        .iter()
+        .filter(|fp| {
+            let matches_cat = cat_filter == "All" || fp.category == cat_filter;
+            let matches_search = search.is_empty()
+                || fp.name.to_lowercase().contains(&search)
+                || fp.description.to_lowercase().contains(&search)
+                || fp.ref_prefix.to_lowercase().contains(&search);
+            matches_cat && matches_search
+        })
+        .collect();
+
+    if let Some(list_el) = app.doc.get_element_by_id("fp-items-list") {
+        let mut html = String::new();
+        for fp in &filtered {
+            let is_sel = fp.id == sel_id;
+            let active_cls = if is_sel { "cad-fp-item active" } else { "cad-fp-item" };
+            html.push_str(&format!(
+                r#"<div class="{active_cls}" data-fp-id="{id}">
+                     <div style="font-size:12px;font-weight:600;color:#f1f5f9;">{name}</div>
+                     <div style="font-size:10.5px;color:#94a3b8;margin-top:2px;">{desc}</div>
+                     <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748b;margin-top:3px;">Pads: {pads} | Pitch: {pitch:.2} mm</div>
+                   </div>"#,
+                active_cls = active_cls,
+                id = fp.id,
+                name = fp.name,
+                desc = fp.description,
+                pads = fp.pads.len(),
+                pitch = fp.pitch_mm,
+            ));
+        }
+        list_el.set_inner_html(&html);
+    }
+
+    let sel_fp = app
+        .footprint_library
+        .iter()
+        .find(|f| f.id == sel_id)
+        .or_else(|| filtered.first().copied());
+
+    if let Some(fp) = sel_fp {
+        if let Some(svg_box) = app.doc.get_element_by_id("fp-preview-svg-container") {
+            svg_box.set_inner_html(&fp.generate_svg_preview());
+        }
+        if let Some(detail_box) = app.doc.get_element_by_id("fp-detail-specs") {
+            let tht_count = fp.pads.iter().filter(|p| p.is_tht).count();
+            let smd_count = fp.pads.len() - tht_count;
+            detail_box.set_inner_html(&format!(
+                r#"<div style="font-size:14px;font-weight:700;color:#f1f5f9;">{name}</div>
+                   <div style="font-size:11px;color:#94a3b8;line-height:1.4;">{desc}</div>
+                   <div style="margin-top:8px;padding:8px 12px;background:#151820;border:1px solid #282d3b;border-radius:4px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;">
+                     <div><span style="color:#64748b;">Category:</span> <b style="color:#e2e8f0;">{cat}</b></div>
+                     <div><span style="color:#64748b;">Ref Prefix:</span> <b style="color:#38bdf8;">{prefix}?</b></div>
+                     <div><span style="color:#64748b;">Total Pads:</span> <b style="color:#e2e8f0;">{total_pads}</b></div>
+                     <div><span style="color:#64748b;">Mount Type:</span> <b style="color:#e2e8f0;">{mount_type}</b></div>
+                     <div><span style="color:#64748b;">Pitch:</span> <b style="color:#e2e8f0;">{pitch:.2} mm</b></div>
+                     <div><span style="color:#64748b;">Body Size:</span> <b style="color:#e2e8f0;">{w:.2} x {h:.2} mm</b></div>
+                   </div>"#,
+                name = fp.name,
+                desc = fp.description,
+                cat = fp.category,
+                prefix = fp.ref_prefix,
+                total_pads = fp.pads.len(),
+                mount_type = if tht_count > 0 && smd_count > 0 { "Mixed SMD/THT" } else if tht_count > 0 { "Through-Hole (THT)" } else { "Surface Mount (SMD)" },
+                pitch = fp.pitch_mm,
+                w = fp.body_w,
+                h = fp.body_h,
+            ));
+        }
+        if let Some(hint) = app.doc.get_element_by_id("fp-selected-hint") {
+            hint.set_text_content(Some(&format!("Selected: {} ({})", fp.name, fp.category)));
+        }
+    }
 }
 
 fn fetch_text_with_callback<F: FnOnce(String) + 'static>(url: &str, callback: F) {

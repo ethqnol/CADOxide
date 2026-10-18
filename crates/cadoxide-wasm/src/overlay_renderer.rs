@@ -21,6 +21,7 @@ pub struct OverlayConfig<'a> {
     pub active_draw_layer: u32,
     pub is_zone_preview: bool,
     pub is_keepout_preview: bool,
+    pub is_dragging: bool,
 }
 
 fn set_prop(ctx: &CanvasRenderingContext2d, key: &str, val: &str) {
@@ -143,20 +144,13 @@ pub fn render_cad_overlay(
 
             let z_layer = z_for_layer(zone.layer_mask);
 
-            if cfg.zone_display_mode == 0 && !zone.is_keepout {
+            if cfg.zone_display_mode == 0 && !zone.is_keepout && !cfg.is_dragging {
                 let fill_alpha = (if zone.is_teardrop { 0.68 } else { 0.34 }) * dim_factor;
-                let stroke_alpha = 0.72 * dim_factor;
                 set_prop(
                     &ctx,
                     "fillStyle",
                     &format!("rgba({}, {:.3})", fill_rgb, fill_alpha),
                 );
-                set_prop(
-                    &ctx,
-                    "strokeStyle",
-                    &format!("rgba({}, {:.3})", stroke_rgb, stroke_alpha),
-                );
-                set_num_prop(&ctx, "lineWidth", if zone.is_teardrop { 0.8 } else { 1.2 });
 
                 let polys_to_draw = if !zone.filled_polys.is_empty() {
                     &zone.filled_polys
@@ -168,18 +162,50 @@ pub fn render_cad_overlay(
                     if poly.len() < 3 {
                         continue;
                     }
+
+                    // Viewport Bounding Box Culling (Skip offscreen polygons)
+                    let mut p_min_x = poly[0].0;
+                    let mut p_max_x = poly[0].0;
+                    let mut p_min_y = poly[0].1;
+                    let mut p_max_y = poly[0].1;
+                    for pt in poly {
+                        if pt.0 < p_min_x { p_min_x = pt.0; }
+                        if pt.0 > p_max_x { p_max_x = pt.0; }
+                        if pt.1 < p_min_y { p_min_y = pt.1; }
+                        if pt.1 > p_max_y { p_max_y = pt.1; }
+                    }
+                    let (s_min_x, s_min_y) = renderer.board_mm_to_device_px(p_min_x, p_min_y, z_layer);
+                    let (s_max_x, s_max_y) = renderer.board_mm_to_device_px(p_max_x, p_max_y, z_layer);
+                    let b_min_x = s_min_x.min(s_max_x);
+                    let b_max_x = s_min_x.max(s_max_x);
+                    let b_min_y = s_min_y.min(s_max_y);
+                    let b_max_y = s_min_y.max(s_max_y);
+
+                    if b_max_x < -30.0 || b_min_x > w_f64 + 30.0 || b_max_y < -30.0 || b_min_y > h_f64 + 30.0 {
+                        continue;
+                    }
+
                     ctx.begin_path();
                     let (x0, y0) = renderer.board_mm_to_device_px(poly[0].0, poly[0].1, z_layer);
                     ctx.move_to(x0, y0);
+                    let mut last_px = x0;
+                    let mut last_py = y0;
+
                     for pt in &poly[1..] {
                         let (px, py) = renderer.board_mm_to_device_px(pt.0, pt.1, z_layer);
+                        // Sub-pixel vertex decimation: skip points closer than 1.4 pixels
+                        let dx = px - last_px;
+                        let dy = py - last_py;
+                        if (dx * dx + dy * dy) < 2.0 {
+                            continue;
+                        }
                         ctx.line_to(px, py);
+                        last_px = px;
+                        last_py = py;
                     }
                     ctx.close_path();
                     ctx.fill();
-                    if !zone.is_teardrop {
-                        ctx.stroke();
-                    }
+                    // Do not call ctx.stroke() on filled area polygons; outline is stroked cleanly below
                 }
             }
 
@@ -222,11 +248,10 @@ pub fn render_cad_overlay(
     // 2. Ratsnest Airwires (Unrouted / Same-Net Pad Connections)
     // ========================================================================
     let target_net = renderer.selected_net_id;
-    if (cfg.show_ratsnest || target_net > 0) && renderer.diff_mode < 0.5 && board.pad_labels.len() > 1 {
+    if (cfg.show_ratsnest || target_net > 0) && renderer.diff_mode < 0.5 && board.pad_labels.len() > 1 && !cfg.is_dragging {
         set_prop(&ctx, "strokeStyle", "rgba(160, 205, 255, 0.65)");
         set_num_prop(&ctx, "lineWidth", 1.1);
 
-        // Nets that have copper plane fills are already fully connected
         let plane_nets: std::collections::HashSet<u32> = board
             .zones
             .iter()
@@ -234,7 +259,6 @@ pub fn render_cad_overlay(
             .map(|z| z.net_id)
             .collect();
 
-        // Group pads by net_id
         let mut pads_by_net: std::collections::HashMap<u32, Vec<(f32, f32)>> =
             std::collections::HashMap::new();
         for pad in &board.pad_labels {
@@ -246,10 +270,8 @@ pub fn render_cad_overlay(
                     continue;
                 }
             } else if plane_nets.contains(&pad.net_id) {
-                // Skip plane nets (GND, etc.) on global ratsnest to avoid spiderwebs across copper fills
                 continue;
             } else if let Some(stats) = board.nets.get(&pad.net_id) {
-                // If net is already fully routed with tracks, don't clutter the board
                 if stats.segment_count > 0 && stats.segment_count >= stats.pad_count.saturating_sub(1) {
                     continue;
                 }
@@ -258,11 +280,22 @@ pub fn render_cad_overlay(
         }
 
         ctx.begin_path();
-        // Compute Minimum Spanning Tree (MST via Prim's algorithm) for each net to avoid criss-crossing
         for (_nid, pts) in pads_by_net {
             if pts.len() < 2 {
                 continue;
             }
+
+            if pts.len() > 30 {
+                // Linear nearest-neighbor chaining for very large nets (avoids O(N^3) Prim freeze)
+                let (x0, y0) = renderer.board_mm_to_device_px(pts[0].0, pts[0].1, 2.2);
+                ctx.move_to(x0, y0);
+                for pt in &pts[1..] {
+                    let (px, py) = renderer.board_mm_to_device_px(pt.0, pt.1, 2.2);
+                    ctx.line_to(px, py);
+                }
+                continue;
+            }
+
             let mut in_tree = vec![false; pts.len()];
             in_tree[0] = true;
             let mut tree_count = 1;
