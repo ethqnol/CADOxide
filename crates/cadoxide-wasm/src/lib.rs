@@ -13,7 +13,6 @@ use parser::{
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::slice;
 use wasm_bindgen::closure::Closure;
@@ -142,6 +141,13 @@ pub struct AppController {
 }
 
 impl AppController {
+    pub fn sel_filter_mask(&self) -> u32 {
+        (if self.sel_tracks { 1 } else { 0 })
+            | (if self.sel_vias { 2 } else { 0 })
+            | (if self.sel_pads || self.sel_footprints { 4 } else { 0 })
+            | (if self.sel_graphics { 8 } else { 0 })
+    }
+
     pub fn snap_mm(&self, x: f32, y: f32) -> (f32, f32) {
         let g = self.grid_snap_mm.max(0.01);
         ((x / g).round() * g, (y / g).round() * g)
@@ -1194,7 +1200,7 @@ pub fn start_cadoxide_app() {
         show_pad_labels: true,
         show_pad_nets: true,
         show_fp_text: true,
-        show_ratsnest: true,
+        show_ratsnest: false,
         zone_display_mode: 0,
         sel_footprints: true,
         sel_tracks: true,
@@ -1370,7 +1376,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               <button id="btn-zone-outline" class="cad-tool-btn" title="Show Only Zone Boundaries (Outlines)">□Z</button>
               <button id="btn-zone-off" class="cad-tool-btn" title="Do Not Show Copper Zones">×Z</button>
               <div class="cad-tool-sep"></div>
-              <button id="btn-opt-ratsnest" class="cad-tool-btn cad-tool-btn-active" title="Show/Hide Ratsnest Airwires">⧖</button>
+              <button id="btn-opt-ratsnest" class="cad-tool-btn" title="Show/Hide Ratsnest Airwires">⧖</button>
               <button id="btn-opt-highcontrast" class="cad-tool-btn" title="Cycle High-Contrast Mode (H): Normal / Dim / Hide Inactive">◐</button>
               <button id="btn-opt-flipview" class="cad-tool-btn" title="Flip Board View Horizontally (F)">⇄</button>
             </aside>
@@ -1549,7 +1555,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                 <label class="cad-layer-row"><span class="cad-layer-left"><input id="obj-chk-pad-labels" type="checkbox" checked /><span>Pad Numbers</span></span><span class="cad-layer-type">Pin #</span></label>
                 <label class="cad-layer-row"><span class="cad-layer-left"><input id="obj-chk-pad-nets" type="checkbox" checked /><span>Pad Net Names</span></span><span class="cad-layer-type">Net Label</span></label>
                 <label class="cad-layer-row"><span class="cad-layer-left"><input id="obj-chk-fp-text" type="checkbox" checked /><span>Footprint Text</span></span><span class="cad-layer-type">Ref / Val</span></label>
-                <label class="cad-layer-row"><span class="cad-layer-left"><input id="obj-chk-ratsnest" type="checkbox" checked /><span>Ratsnest Airwires</span></span><span class="cad-layer-type">Unrouted</span></label>
+                <label class="cad-layer-row"><span class="cad-layer-left"><input id="obj-chk-ratsnest" type="checkbox" /><span>Ratsnest Airwires</span></span><span class="cad-layer-type">Unrouted</span></label>
                 <label class="cad-layer-row"><span class="cad-layer-left"><input id="obj-chk-grid" type="checkbox" checked /><span>Canvas Grid</span></span><span class="cad-layer-type">Metric</span></label>
               </div>
 
@@ -1744,12 +1750,7 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                 return;
             }
 
-            let (f_tr, f_vi, f_pa, f_gr) = (
-                app.sel_tracks,
-                app.sel_vias,
-                app.sel_pads || app.sel_footprints,
-                app.sel_graphics,
-            );
+            let sel_mask = app.sel_filter_mask();
 
             match app.active_tool {
                 CadTool::SelectMove => {
@@ -1758,10 +1759,7 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                         raw_mm.1,
                         active_mask,
                         1.6,
-                        f_tr,
-                        f_vi,
-                        f_pa,
-                        f_gr,
+                        sel_mask,
                     );
                     if let Some(ref h) = hit {
                         if Some(h.instance_idx) == app.selected_primitive_idx {
@@ -2036,10 +2034,11 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                     app.current_board.texts.push(BoardText {
                         x: snapped.0,
                         y: snapped.1,
+                        angle_deg: 0.0,
                         size_mm: 1.2,
                         text: format!("LABEL_{}", idx_num),
                         layer_mask: layer,
-                        is_reference: true,
+                        is_ref: true,
                     });
                     app.draw_all();
                 }
@@ -2161,21 +2160,13 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                 return;
             }
 
-            let (f_tr, f_vi, f_pa, f_gr) = (
-                app.sel_tracks,
-                app.sel_vias,
-                app.sel_pads || app.sel_footprints,
-                app.sel_graphics,
-            );
+            let sel_mask = app.sel_filter_mask();
             let hit = app.current_board.query_nearest_filtered(
                 coord_pair.0,
                 coord_pair.1,
                 active_mask,
                 1.8,
-                f_tr,
-                f_vi,
-                f_pa,
-                f_gr,
+                sel_mask,
             );
             let new_hover_id = hit.as_ref().map(|h| h.instance_idx as i32).unwrap_or(-1);
 
@@ -2238,21 +2229,13 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                             r.screen_to_board_mm(e.client_x() as f64, e.client_y() as f64);
                         active_mask = r.active_layer_mask;
                     }
-                    let (f_tr, f_vi, f_pa, f_gr) = (
-                        app.sel_tracks,
-                        app.sel_vias,
-                        app.sel_pads || app.sel_footprints,
-                        app.sel_graphics,
-                    );
+                    let sel_mask = app.sel_filter_mask();
                     let hit = app.current_board.query_nearest_filtered(
                         coord_pair.0,
                         coord_pair.1,
                         active_mask,
                         1.8,
-                        f_tr,
-                        f_vi,
-                        f_pa,
-                        f_gr,
+                        sel_mask,
                     );
                     let sel_idx = hit.as_ref().map(|h| h.instance_idx);
                     app.selected_primitive_idx = sel_idx;

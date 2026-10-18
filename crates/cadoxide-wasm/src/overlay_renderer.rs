@@ -221,28 +221,84 @@ pub fn render_cad_overlay(
     // ========================================================================
     // 2. Ratsnest Airwires (Unrouted / Same-Net Pad Connections)
     // ========================================================================
-    if cfg.show_ratsnest && renderer.diff_mode < 0.5 && board.pad_labels.len() > 1 {
-        set_prop(&ctx, "strokeStyle", "rgba(175, 215, 255, 0.52)");
-        set_num_prop(&ctx, "lineWidth", 1.0);
-        ctx.begin_path();
-        // Connect consecutive pads sharing the same net_id > 0
-        let mut last_by_net: std::collections::HashMap<u32, (f32, f32)> =
+    let target_net = renderer.selected_net_id;
+    if (cfg.show_ratsnest || target_net > 0) && renderer.diff_mode < 0.5 && board.pad_labels.len() > 1 {
+        set_prop(&ctx, "strokeStyle", "rgba(160, 205, 255, 0.65)");
+        set_num_prop(&ctx, "lineWidth", 1.1);
+
+        // Nets that have copper plane fills are already fully connected
+        let plane_nets: std::collections::HashSet<u32> = board
+            .zones
+            .iter()
+            .filter(|z| !z.is_keepout && !z.is_teardrop)
+            .map(|z| z.net_id)
+            .collect();
+
+        // Group pads by net_id
+        let mut pads_by_net: std::collections::HashMap<u32, Vec<(f32, f32)>> =
             std::collections::HashMap::new();
         for pad in &board.pad_labels {
             if pad.net_id == 0 {
                 continue;
             }
-            if renderer.selected_net_id > 0 && pad.net_id != (renderer.selected_net_id as u32) {
+            if target_net > 0 {
+                if pad.net_id != (target_net as u32) {
+                    continue;
+                }
+            } else if plane_nets.contains(&pad.net_id) {
+                // Skip plane nets (GND, etc.) on global ratsnest to avoid spiderwebs across copper fills
+                continue;
+            } else if let Some(stats) = board.nets.get(&pad.net_id) {
+                // If net is already fully routed with tracks, don't clutter the board
+                if stats.segment_count > 0 && stats.segment_count >= stats.pad_count.saturating_sub(1) {
+                    continue;
+                }
+            }
+            pads_by_net.entry(pad.net_id).or_default().push((pad.x, pad.y));
+        }
+
+        ctx.begin_path();
+        // Compute Minimum Spanning Tree (MST via Prim's algorithm) for each net to avoid criss-crossing
+        for (_nid, pts) in pads_by_net {
+            if pts.len() < 2 {
                 continue;
             }
-            if let Some((lx, ly)) = last_by_net.insert(pad.net_id, (pad.x, pad.y)) {
-                let dist_sq = (pad.x - lx) * (pad.x - lx) + (pad.y - ly) * (pad.y - ly);
-                if dist_sq > 0.25 && dist_sq < 2500.0 {
-                    let (x0, y0) = renderer.board_mm_to_device_px(lx, ly, 2.2);
-                    let (x1, y1) = renderer.board_mm_to_device_px(pad.x, pad.y, 2.2);
+            let mut in_tree = vec![false; pts.len()];
+            in_tree[0] = true;
+            let mut tree_count = 1;
+
+            while tree_count < pts.len() {
+                let mut best_dist = f32::MAX;
+                let mut best_edge = (0, 0);
+
+                for i in 0..pts.len() {
+                    if !in_tree[i] {
+                        continue;
+                    }
+                    for j in 0..pts.len() {
+                        if in_tree[j] {
+                            continue;
+                        }
+                        let dx = pts[i].0 - pts[j].0;
+                        let dy = pts[i].1 - pts[j].1;
+                        let d = dx * dx + dy * dy;
+                        if d < best_dist {
+                            best_dist = d;
+                            best_edge = (i, j);
+                        }
+                    }
+                }
+
+                if best_dist < 4000.0 {
+                    let p0 = pts[best_edge.0];
+                    let p1 = pts[best_edge.1];
+                    let (x0, y0) = renderer.board_mm_to_device_px(p0.0, p0.1, 2.2);
+                    let (x1, y1) = renderer.board_mm_to_device_px(p1.0, p1.1, 2.2);
                     ctx.move_to(x0, y0);
                     ctx.line_to(x1, y1);
                 }
+                in_tree[best_edge.1] = true;
+                tree_count += 1;
             }
         }
         ctx.stroke();
@@ -251,7 +307,7 @@ pub fn render_cad_overlay(
     // ========================================================================
     // 3. Footprint Reference / Value Labels & Board Text
     // ========================================================================
-    if cfg.show_fp_text && scale >= 5.0 && renderer.diff_mode < 0.5 {
+    if cfg.show_fp_text && scale >= 4.5 && renderer.diff_mode < 0.5 {
         set_prop(&ctx, "textAlign", "center");
         set_prop(&ctx, "textBaseline", "middle");
 
@@ -264,19 +320,19 @@ pub fn render_cad_overlay(
             }
             let z_layer = z_for_layer(txt.layer_mask);
             let (px, py) = renderer.board_mm_to_device_px(txt.x, txt.y, z_layer);
-            if px < -80.0 || px > w_f64 + 80.0 || py < -40.0 || py > h_f64 + 40.0 {
+            if px < -120.0 || px > w_f64 + 120.0 || py < -60.0 || py > h_f64 + 60.0 {
                 continue;
             }
 
-            let font_px = (txt.size_mm * scale * 0.92).clamp(8.5, 28.0);
-            if font_px < 8.8 && !txt.is_ref {
+            let font_px = (txt.size_mm * scale * 0.92).clamp(8.0, 32.0);
+            if font_px < 8.2 && !txt.is_ref {
                 continue;
             }
 
             let alpha = if hc_mode == 1 && (txt.layer_mask & active_draw_bit) == 0 {
-                0.25
+                0.22
             } else {
-                0.90
+                0.92
             };
 
             let color = if (txt.layer_mask & LAYER_F_SILKS) != 0 {
@@ -284,9 +340,9 @@ pub fn render_cad_overlay(
             } else if (txt.layer_mask & LAYER_B_SILKS) != 0 {
                 format!("rgba(232, 178, 166, {:.2})", alpha)
             } else if (txt.layer_mask & LAYER_F_CU) != 0 {
-                format!("rgba(235, 90, 90, {:.2})", alpha)
+                format!("rgba(225, 75, 75, {:.2})", alpha)
             } else if (txt.layer_mask & LAYER_B_CU) != 0 {
-                format!("rgba(90, 165, 240, {:.2})", alpha)
+                format!("rgba(75, 155, 235, {:.2})", alpha)
             } else if (txt.layer_mask & LAYER_F_CRTYD) != 0 {
                 format!("rgba(224, 56, 216, {:.2})", alpha)
             } else if (txt.layer_mask & LAYER_EDGE_CUTS) != 0 {
@@ -305,7 +361,17 @@ pub fn render_cad_overlay(
                 &format!("600 {:.1}px 'JetBrains Mono', monospace", font_px),
             );
             set_prop(&ctx, "fillStyle", &color);
-            let _ = ctx.fill_text(&txt.text, px, py);
+
+            // Unescape \n and render multiline text block with proper vertical alignment
+            let clean_text = txt.text.replace("\\n", "\n");
+            let lines: Vec<&str> = clean_text.split('\n').collect();
+            let line_height = (font_px * 1.25) as f64;
+            let total_height = (lines.len() as f64) * line_height;
+            let start_y = py - (total_height * 0.5) + (line_height * 0.5);
+
+            for (i, line) in lines.iter().enumerate() {
+                let _ = ctx.fill_text(line, px, start_y + (i as f64 * line_height));
+            }
         }
     }
 

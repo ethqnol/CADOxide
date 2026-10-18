@@ -127,6 +127,10 @@ pub struct ParsedBoard {
 }
 
 impl ParsedBoard {
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
     pub fn with_spatial_grid(
         instances: Vec<f32>,
         primitive_count: usize,
