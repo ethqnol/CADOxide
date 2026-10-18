@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "CADoxide — 100% Pure Rust WASM + Instanced GPU SDF Engine",
+        "title": "CADOxide - PCB Editor",
         "width": 1440,
         "height": 900,
         "resizable": true,

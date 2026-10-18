@@ -1279,6 +1279,7 @@ pub fn start_cadoxide_app() {
 }
 
 fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppController>>) {
+    doc.set_title("CADOxide - PCB Editor");
     root.set_inner_html(
         r##"
         <div class="cad-shell">
@@ -1292,7 +1293,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                   <circle cx="11" cy="11" r="1.5" fill="#79b8ff"/>
                   <path d="M5 5L8 8H11V11" stroke="#c83434" stroke-width="1.4" stroke-linecap="round"/>
                 </svg>
-                <span>CADoxide — PCB Editor</span>
+                <span>CADOxide - PCB Editor</span>
               </div>
               <div class="cad-divider-v"></div>
               <button id="menu-file-save" class="cad-menu-btn" title="File → Export .kicad_pcb">File</button>
