@@ -960,6 +960,9 @@ input[type="checkbox"], input[type="radio"] {
 }
 
 .home-row-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   background: transparent;
   border: 1px solid #2b3547;
   color: #828fa6;

@@ -1189,9 +1189,9 @@ impl AppController {
                 RoutingMode::Free45 => "Free 45°",
             };
             let drc_status = if self.clearance_halo.is_some() {
-                "⚠ DRC Conflict"
+                "DRC: Conflict"
             } else {
-                "✓ DRC Clean"
+                "DRC: Clean"
             };
 
             let probe_str = if let Some(ref info) = self.cross_probe_info {
@@ -1483,13 +1483,27 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
           <!-- Row 2: KiCad Auxiliary & Action Toolbar (History, Zoom, PCB Parameters, 3D) -->
           <div id="cad-param-bar" class="cad-param-bar">
             <div class="cad-menubar-group">
-              <button id="btn-undo" class="cad-btn" title="Undo (Ctrl+Z)">↶ Undo</button>
-              <button id="btn-rotate-selected" class="cad-btn" title="Rotate Selected 90° (R)">↻</button>
-              <button id="btn-delete-selected" class="cad-btn cad-btn-danger" title="Delete Selected Item (Del)">✕</button>
+              <button id="btn-undo" class="cad-btn" title="Undo (Ctrl+Z)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+                <span>Undo</span>
+              </button>
+              <button id="btn-rotate-selected" class="cad-btn" title="Rotate Selected 90° (R)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.85.83 6.72 2.24L21 8"/><path d="M21 3v5h-5"/></svg>
+              </button>
+              <button id="btn-delete-selected" class="cad-btn cad-btn-danger" title="Delete Selected Item (Del)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
               <div class="cad-divider-v"></div>
-              <button id="btn-zoom-in" class="cad-btn" title="Zoom In (+)">🔍+</button>
-              <button id="btn-zoom-out" class="cad-btn" title="Zoom Out (-)">🔍−</button>
-              <button id="btn-zoom-fit" class="cad-btn" title="Zoom to Fit Board (Home)">⛶ Fit</button>
+              <button id="btn-zoom-in" class="cad-btn" title="Zoom In (+)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              </button>
+              <button id="btn-zoom-out" class="cad-btn" title="Zoom Out (-)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              </button>
+              <button id="btn-zoom-fit" class="cad-btn" title="Zoom to Fit Board (Home)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                <span>Fit</span>
+              </button>
               <div class="cad-divider-v"></div>
 
               <span class="cad-param-label">Layer:</span>
@@ -1589,25 +1603,45 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
           <div class="cad-workspace">
             <!-- Left Vertical Strip: KiCad Display & Viewing Options -->
             <aside id="cad-left-strip" class="cad-toolstrip" title="KiCad Display & Viewing Options">
-              <button id="btn-opt-grid" class="cad-tool-btn cad-tool-btn-active" title="Show/Hide Grid">#</button>
-              <button id="btn-opt-polar" class="cad-tool-btn" title="Toggle Polar Coordinates (R / θ)">∠</button>
+              <button id="btn-opt-grid" class="cad-tool-btn cad-tool-btn-active" title="Show/Hide Grid">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><line x1="5.5" y1="2" x2="5.5" y2="14"/><line x1="10.5" y1="2" x2="10.5" y2="14"/><line x1="2" y1="5.5" x2="14" y2="5.5"/><line x1="2" y1="10.5" x2="14" y2="10.5"/></svg>
+              </button>
+              <button id="btn-opt-polar" class="cad-tool-btn" title="Toggle Polar Coordinates (R / θ)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 13H3L11 3"/><path d="M7 13 A5 5 0 0 0 5.5 10"/></svg>
+              </button>
               <div class="cad-tool-sep"></div>
               <button id="btn-unit-in" class="cad-tool-btn" title="Set Units to Inches (in)">in</button>
               <button id="btn-unit-mil" class="cad-tool-btn" title="Set Units to Mils (mil)">mil</button>
               <button id="btn-unit-mm" class="cad-tool-btn cad-tool-btn-active" title="Set Units to Millimeters (mm)">mm</button>
               <div class="cad-tool-sep"></div>
-              <button id="btn-opt-crosshair" class="cad-tool-btn" title="Toggle Full-Window Crosshair Cursor">┼</button>
+              <button id="btn-opt-crosshair" class="cad-tool-btn" title="Toggle Full-Window Crosshair Cursor">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="8" y1="2" x2="8" y2="14"/><line x1="2" y1="8" x2="14" y2="8"/></svg>
+              </button>
               <button id="btn-opt-pad-labels" class="cad-tool-btn cad-tool-btn-active" title="Show/Hide On-Pad Pin Numbers & Net Names">1/N</button>
               <button id="btn-opt-fp-text" class="cad-tool-btn cad-tool-btn-active" title="Show/Hide Footprint Reference & Value Labels">Ref</button>
-              <button id="btn-opt-sketch" class="cad-tool-btn" title="Toggle Sketch / Outline Mode for Tracks & Pads">▱</button>
+              <button id="btn-opt-sketch" class="cad-tool-btn" title="Toggle Sketch / Outline Mode for Tracks & Pads">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="3.5,12 6.5,4 13.5,4 10.5,12"/></svg>
+              </button>
               <div class="cad-tool-sep"></div>
-              <button id="btn-zone-filled" class="cad-tool-btn cad-tool-btn-active" title="Show Filled Areas of Zones">■Z</button>
-              <button id="btn-zone-outline" class="cad-tool-btn" title="Show Only Zone Boundaries (Outlines)">□Z</button>
-              <button id="btn-zone-off" class="cad-tool-btn" title="Do Not Show Copper Zones">×Z</button>
+              <button id="btn-zone-filled" class="cad-tool-btn cad-tool-btn-active" title="Show Filled Areas of Zones">
+                <svg viewBox="0 0 16 16" fill="currentColor"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/></svg>
+              </button>
+              <button id="btn-zone-outline" class="cad-tool-btn" title="Show Only Zone Boundaries (Outlines)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="2.5" width="11" height="11" rx="1"/></svg>
+              </button>
+              <button id="btn-zone-off" class="cad-tool-btn" title="Do Not Show Copper Zones">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke-dasharray="2.5,1.5"/><line x1="3" y1="13" x2="13" y2="3" stroke-width="1.8"/></svg>
+              </button>
               <div class="cad-tool-sep"></div>
-              <button id="btn-opt-ratsnest" class="cad-tool-btn" title="Show/Hide Ratsnest Airwires">⧖</button>
-              <button id="btn-opt-highcontrast" class="cad-tool-btn" title="Cycle High-Contrast Mode (H): Normal / Dim / Hide Inactive">◐</button>
-              <button id="btn-opt-flipview" class="cad-tool-btn" title="Flip Board View Horizontally (F)">⇄</button>
+              <button id="btn-opt-ratsnest" class="cad-tool-btn" title="Show/Hide Ratsnest Airwires">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="13" r="1.6" fill="currentColor"/><circle cx="13" cy="3" r="1.6" fill="currentColor"/><line x1="3" y1="13" x2="13" y2="3" stroke-dasharray="2,2"/></svg>
+              </button>
+              <button id="btn-opt-highcontrast" class="cad-tool-btn" title="Cycle High-Contrast Mode (H): Normal / Dim / Hide Inactive">
+                <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 2 A6 6 0 0 1 8 14 Z"/></svg>
+              </button>
+              <button id="btn-opt-flipview" class="cad-tool-btn" title="Flip Board View Horizontally (F)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5h11l-3-3"/><path d="M14 11H3l3 3"/></svg>
+              </button>
             </aside>
 
             <!-- Center GPU PCB Canvas + Synchronized 2D CAD Overlay Canvas -->
@@ -1669,7 +1703,10 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                           <span class="home-pill">2-Layer Copper</span>
                           <span class="home-pill">Hierarchical Schematic</span>
                         </div>
-                        <button class="home-row-btn">Open →</button>
+                        <button class="home-row-btn">
+                          <span>Open</span>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                        </button>
                       </div>
 
                       <!-- Project 2: CM5 Carrier Board -->
@@ -1687,7 +1724,10 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                           <span class="home-pill">4-Layer Stackup</span>
                           <span class="home-pill">Compute Module 5</span>
                         </div>
-                        <button class="home-row-btn">Open →</button>
+                        <button class="home-row-btn">
+                          <span>Open</span>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                        </button>
                       </div>
 
                       <div id="home-custom-projects-container"></div>
@@ -1767,7 +1807,10 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                 <div class="cad-panel-header" style="height:38px;padding:0 14px;background:#161922;border-bottom:1px solid #282d3b;display:flex;align-items:center;justify-content:space-between;">
                   <div style="display:flex;align-items:center;gap:10px;">
                     <span style="font-weight:700;color:#f1f5f9;">DRC RULE CHECKER</span>
-                    <button id="btn-run-drc" class="cad-btn" style="background:#1e3a5f;border-color:#388bfd;color:#79b8ff;font-weight:700;" title="Run live DRC rule check across all copper layers, pads, and nets">▶ Run DRC</button>
+                    <button id="btn-run-drc" class="cad-btn" style="background:#1e3a5f;border-color:#388bfd;color:#79b8ff;font-weight:700;" title="Run live DRC rule check across all copper layers, pads, and nets">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                      <span>Run DRC</span>
+                    </button>
                     <div class="cad-divider-v"></div>
                     <span class="cad-param-label">Min Spacing:</span>
                     <input id="input-drc-clearance" type="number" step="0.05" min="0.05" max="2.0" value="0.20" class="cad-input" style="width:55px;" />
@@ -1804,27 +1847,53 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               <button id="btn-tool-route" class="cad-tool-btn" title="Route single track (X) — Press / to flip 45° posture">
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2.5 13.5L6.5 9.5H10.5L13.5 6.5"/><circle cx="2.5" cy="13.5" r="1.4" fill="currentColor"/><circle cx="13.5" cy="6.5" r="1.4" fill="currentColor"/></svg>
               </button>
-              <button id="btn-tool-diffpair" class="cad-tool-btn" title="Route differential pair (6)">DP</button>
-              <button id="btn-tool-tune" class="cad-tool-btn" title="Tune length of a single track / Serpentine meander (7)">∿</button>
+              <button id="btn-tool-diffpair" class="cad-tool-btn" title="Route differential pair (6)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13.5L5.5 10H9.5L13 6.5"/><circle cx="2" cy="13.5" r="1.2" fill="currentColor"/><circle cx="13" cy="6.5" r="1.2" fill="currentColor"/><path d="M3.5 15L7 11.5H11L14.5 8"/><circle cx="3.5" cy="15" r="1.2" fill="currentColor"/><circle cx="14.5" cy="8" r="1.2" fill="currentColor"/></svg>
+              </button>
+              <button id="btn-tool-tune" class="cad-tool-btn" title="Tune length of a single track / Serpentine meander (7)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.5h2v-4.5h3.5v8h3.5v-8h3.5v4.5h1.5"/></svg>
+              </button>
               <button id="btn-tool-via" class="cad-tool-btn" title="Add freestanding vias (V)">
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.2"/><circle cx="8" cy="8" r="2.1"/></svg>
               </button>
               <button id="btn-tool-pad" class="cad-tool-btn" title="Add footprint / SMD pad (P)">
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4.5" width="10" height="7" rx="1.5"/></svg>
               </button>
-              <button id="btn-tool-zone" class="cad-tool-btn" title="Add filled copper zone (Z) — Click polygon corners, Right-Click to close">▤</button>
-              <button id="btn-tool-keepout" class="cad-tool-btn" title="Add rule area / keepout zone (K)">⊘</button>
+              <button id="btn-tool-zone" class="cad-tool-btn" title="Add filled copper zone (Z) — Click polygon corners, Right-Click to close">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><polygon points="3,3.5 13,3.5 13,12.5 8.5,13.5 3,11"/><line x1="3" y1="6.5" x2="13" y2="6.5"/><line x1="3" y1="9.5" x2="13" y2="9.5"/></svg>
+              </button>
+              <button id="btn-tool-keepout" class="cad-tool-btn" title="Add rule area / keepout zone (K)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5" stroke-dasharray="2,1"/><line x1="3.5" y1="12.5" x2="12.5" y2="3.5" stroke-width="1.6"/></svg>
+              </button>
               <div class="cad-tool-sep"></div>
-              <button id="btn-tool-line" class="cad-tool-btn" title="Draw a line (L)">╱</button>
-              <button id="btn-tool-arc" class="cad-tool-btn" title="Draw an arc (A)">⌒</button>
-              <button id="btn-tool-circle" class="cad-tool-btn" title="Draw a circle (C)">◯</button>
-              <button id="btn-tool-rect" class="cad-tool-btn" title="Draw a rectangle">▭</button>
-              <button id="btn-tool-poly" class="cad-tool-btn" title="Draw a graphic polygon (Y)">⬠</button>
-              <button id="btn-tool-text" class="cad-tool-btn" title="Add a text item (T)">T</button>
-              <button id="btn-tool-dim" class="cad-tool-btn" title="Add aligned linear dimension (D)">↔</button>
+              <button id="btn-tool-line" class="cad-tool-btn" title="Draw a line (L)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="13" x2="13" y2="3"/></svg>
+              </button>
+              <button id="btn-tool-arc" class="cad-tool-btn" title="Draw an arc (A)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 12 A 6.5 6.5 0 0 1 13 12"/></svg>
+              </button>
+              <button id="btn-tool-circle" class="cad-tool-btn" title="Draw a circle (C)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"/></svg>
+              </button>
+              <button id="btn-tool-rect" class="cad-tool-btn" title="Draw a rectangle">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="4" width="11" height="8" rx="0.5"/></svg>
+              </button>
+              <button id="btn-tool-poly" class="cad-tool-btn" title="Draw a graphic polygon (Y)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="8,2.5 13.5,6.5 11.5,13.5 4.5,13.5 2.5,6.5"/></svg>
+              </button>
+              <button id="btn-tool-text" class="cad-tool-btn" title="Add a text item (T)">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 3.5h10v2.5h-3.8v7h-2.4v-7h-3.8z"/></svg>
+              </button>
+              <button id="btn-tool-dim" class="cad-tool-btn" title="Add aligned linear dimension (D)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><line x1="2" y1="8" x2="14" y2="8"/><polyline points="5,5.5 2,8 5,10.5"/><polyline points="11,5.5 14,8 11,10.5"/><line x1="2" y1="3" x2="2" y2="13"/><line x1="14" y1="3" x2="14" y2="13"/></svg>
+              </button>
               <div class="cad-tool-sep"></div>
-              <button id="btn-tool-origin" class="cad-tool-btn" title="Place grid/drill origin point (O)">⊕</button>
-              <button id="btn-tool-measure" class="cad-tool-btn" title="Measure between two points (M)">📏</button>
+              <button id="btn-tool-origin" class="cad-tool-btn" title="Place grid/drill origin point (O)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="5.5"/><line x1="8" y1="1.5" x2="8" y2="14.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>
+              </button>
+              <button id="btn-tool-measure" class="cad-tool-btn" title="Measure between two points (M)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 13.5L13.5 2.5"/><line x1="4.5" y1="11.5" x2="6.5" y2="13.5"/><line x1="7" y1="9" x2="9" y2="11"/><line x1="9.5" y1="6.5" x2="11.5" y2="8.5"/></svg>
+              </button>
             </aside>
 
             <!-- Right Docked KiCad Appearance Manager, Layer Display Options, Selection Filter & Inspector -->
@@ -2011,7 +2080,9 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                   <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3H14V13H2V3Z" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="5" width="2.5" height="6" fill="currentColor"/><rect x="9.5" y="5" width="2.5" height="6" fill="currentColor"/></svg>
                   <span>IPC-7351 Standard Footprint Library Browser</span>
                 </div>
-                <button id="btn-close-fp-modal" class="cad-btn" style="padding:2px 8px;font-size:14px;">✕</button>
+                <button id="btn-close-fp-modal" class="cad-btn" style="padding:2px 6px;" title="Close">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
               </div>
               <div class="cad-modal-body">
                 <!-- Category Column -->
@@ -2049,10 +2120,12 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
             <div class="cad-modal-window" style="width:520px;max-width:92vw;">
               <div class="cad-modal-header">
                 <div style="display:flex;align-items:center;gap:8px;">
-                  <span style="font-size:18px;">✨</span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
                   <span style="font-weight:700;">Create New PCB Project</span>
                 </div>
-                <button id="btn-close-new-proj-modal" class="cad-btn" style="padding:2px 8px;font-size:14px;">✕</button>
+                <button id="btn-close-new-proj-modal" class="cad-btn" style="padding:2px 6px;" title="Close">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
               </div>
               <div class="cad-modal-body" style="flex-direction:column;padding:18px;gap:14px;background:#13151b;">
                 <div>
@@ -2085,7 +2158,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               </div>
               <div class="cad-modal-footer">
                 <button id="btn-cancel-new-proj-modal" class="cad-btn">Cancel</button>
-                <button id="btn-confirm-create-proj" class="cad-btn" style="background:#238636;border-color:#2ea043;color:#ffffff;font-weight:700;">Create Project →</button>
+                <button id="btn-confirm-create-proj" class="cad-btn" style="background:#238636;border-color:#2ea043;color:#ffffff;font-weight:700;">Create Project</button>
               </div>
             </div>
           </div>
@@ -2480,7 +2553,7 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                         ) {
                             app.clearance_halo = Some(((snapped.0, snapped.1), vsize * 0.5 + app.min_clearance_rule_mm));
                             if let Some(insp) = app.doc.get_element_by_id("rust-hover-inspector") {
-                                insp.set_text_content(Some(&format!("⛔ Online DRC Guard: {}", err.details)));
+                                insp.set_text_content(Some(&format!("[DRC Violation] {}", err.details)));
                             }
                             app.rebuild_gpu_buffer_with_markers();
                             return;
@@ -3466,7 +3539,7 @@ fn bind_schematic_interactions(doc: &Document, state: Rc<RefCell<AppController>>
 
                 if let Some(lbl) = app.doc.get_element_by_id("sch-cross-probe-label") {
                     lbl.set_text_content(Some(&format!(
-                        "⚡ Cross-Probed to PCB: Net {} (\"{}\") — {} primitives highlighted",
+                        "Cross-Probed to PCB: Net {} (\"{}\") — {} primitives highlighted",
                         chosen_net, net_name, prim_count
                     )));
                 }
@@ -4752,11 +4825,13 @@ pub fn render_drc_workbench(state: &Rc<RefCell<AppController>>) {
 
         if filtered.is_empty() {
             list_el.set_inner_html(
-                r#"<div style="padding:40px;text-align:center;color:#64748b;font-size:12px;">
-                     <div style="font-size:26px;margin-bottom:8px;color:#10b981;">✓</div>
+                r##"<div style="padding:40px;text-align:center;color:#64748b;font-size:12px;">
+                     <div style="display:flex;justify-content:center;margin-bottom:12px;">
+                       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+                     </div>
                      <div style="font-weight:600;color:#cbd5e1;">Zero DRC Violations Found</div>
                      <div style="margin-top:4px;">No clearance conflicts, shorts, or unrouted pins for this filter.</div>
-                   </div>"#,
+                   </div>"##,
             );
             return;
         }
@@ -4967,7 +5042,10 @@ pub fn load_kicad_pcb_string(state: &Rc<RefCell<AppController>>, content: &str, 
                        <span class="home-pill">Custom Board</span>
                        <span class="home-pill" style="color:#4ade80;">Active</span>
                      </div>
-                     <button class="home-row-btn">Open →</button>
+                     <button class="home-row-btn">
+                       <span>Open</span>
+                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                     </button>
                    </div>"##,
                 name = project_name
             );
