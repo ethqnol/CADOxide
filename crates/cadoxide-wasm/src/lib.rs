@@ -433,7 +433,7 @@ impl AppController {
         });
 
         if let Some(sel) = self.doc.get_element_by_id("rust-net-select") {
-            let mut html = String::from(r#"<option value="0">Net Filter: All Nets</option>"#);
+            let mut html = String::from(r#"<option value="0">[All Nets]</option>"#);
             for n in net_list.iter().take(100) {
                 let label = if n.name.is_empty() {
                     format!("Net #{}", n.id)
@@ -1313,24 +1313,24 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               <button id="tab-parts" class="cad-tab">BOM (8)</button>
             </div>
 
-            <!-- Right Project Selector -->
+            <!-- Right Project Selector & Quick Fabrication Package Actions -->
             <div class="cad-menubar-group">
-              <select id="rust-project-select" class="cad-select" title="Active KiCad PCB File">
-                <option value="complex_hierarchy">*complex_hierarchy.kicad_pcb (2-Layer + Copper Pour)</option>
-                <option value="cm5_minima">*CM5_MINIMA_3.kicad_pcb (4-Layer RPi CM5 HDI)</option>
+              <a id="btn-export-pcb" href="#" download="edited_board.kicad_pcb" class="cad-btn" title="Save / Download .kicad_pcb">💾 Save</a>
+              <a id="btn-export-gerbers" href="#" class="cad-btn" style="background:#142d1f;border-color:#2e7d32;color:#86efac;font-weight:700;" title="Generate &amp; Download Complete RS-274X Gerber &amp; NC Drill Fabrication ZIP">📦 Gerbers</a>
+              <button id="btn-open-fp-browser" class="cad-btn" style="background:#162436;border-color:#388bfd;color:#79b8ff;font-weight:600;" title="Browse IPC-7351 Standard Component Footprints (A)">🖵 Footprint (A)</button>
+              <div class="cad-divider-v"></div>
+              <select id="rust-project-select" class="cad-select" style="max-width:210px;" title="Active KiCad PCB File">
+                <option value="complex_hierarchy">complex_hierarchy.kicad_pcb</option>
+                <option value="cm5_minima">CM5_MINIMA_3.kicad_pcb</option>
               </select>
               <button id="btn-100k-hdi" class="cad-btn" title="Generate 100,000-primitive synthetic HDI stress board">HDI-100K</button>
             </div>
           </div>
 
-          <!-- Row 2: KiCad Auxiliary & Action Toolbar (Track Width, Via Size, Grid, Zoom, Zone Fill, 3D) -->
-          <div class="cad-param-bar">
+          <!-- Row 2: KiCad Auxiliary & Action Toolbar (History, Zoom, PCB Parameters, 3D) -->
+          <div id="cad-param-bar" class="cad-param-bar">
             <div class="cad-menubar-group">
-              <a id="btn-export-pcb" href="#" download="edited_board.kicad_pcb" class="cad-btn" title="Save / Download .kicad_pcb">💾 Save</a>
-              <a id="btn-export-gerbers" href="#" class="cad-btn" style="background:#1d3d2a;border-color:#2e7d32;color:#86efac;font-weight:700;" title="Generate &amp; Download Complete RS-274X Gerber &amp; NC Drill Fabrication ZIP">📦 Gerbers</a>
-              <button id="btn-open-fp-browser" class="cad-btn" style="background:#1c2d42;border-color:#388bfd;color:#79b8ff;font-weight:600;" title="Browse IPC-7351 Standard Component Footprints (A)">🖵 Footprint (A)</button>
-              <div class="cad-divider-v"></div>
-              <button id="btn-undo" class="cad-btn" title="Undo (Ctrl+Z)">↶</button>
+              <button id="btn-undo" class="cad-btn" title="Undo (Ctrl+Z)">↶ Undo</button>
               <button id="btn-rotate-selected" class="cad-btn" title="Rotate Selected 90° (R)">↻</button>
               <button id="btn-delete-selected" class="cad-btn cad-btn-danger" title="Delete Selected Item (Del)">✕</button>
               <div class="cad-divider-v"></div>
@@ -1340,7 +1340,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               <div class="cad-divider-v"></div>
 
               <span class="cad-param-label">Layer:</span>
-              <select id="select-draw-layer" class="cad-select" style="max-width:96px;" title="Active Drawing / Routing Layer">
+              <select id="select-draw-layer" class="cad-select" style="width:90px;" title="Active Drawing / Routing Layer">
                 <option value="1">F.Cu</option>
                 <option value="4096">In1.Cu</option>
                 <option value="8192">In2.Cu</option>
@@ -1362,7 +1362,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               </select>
 
               <span class="cad-param-label">W:</span>
-              <select id="select-track-width" class="cad-select" style="max-width:88px;" title="Track Width">
+              <select id="select-track-width" class="cad-select" style="width:78px;" title="Track Width">
                 <option value="0.127">0.127 mm</option>
                 <option value="0.200">0.200 mm</option>
                 <option value="0.250" selected>0.250 mm</option>
@@ -1371,14 +1371,14 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               </select>
 
               <span class="cad-param-label">Via:</span>
-              <select id="select-via-size" class="cad-select" style="max-width:95px;" title="Via Size / Drill">
-                <option value="0.45,0.20">0.45/0.20 mm</option>
-                <option value="0.60,0.30" selected>0.60/0.30 mm</option>
-                <option value="0.80,0.40">0.80/0.40 mm</option>
+              <select id="select-via-size" class="cad-select" style="width:86px;" title="Via Size / Drill">
+                <option value="0.45,0.20">0.45/0.20</option>
+                <option value="0.60,0.30" selected>0.60/0.30</option>
+                <option value="0.80,0.40">0.80/0.40</option>
               </select>
 
               <span class="cad-param-label">Grid:</span>
-              <select id="select-grid-snap" class="cad-select" style="max-width:85px;" title="Grid Step Size">
+              <select id="select-grid-snap" class="cad-select" style="width:74px;" title="Grid Step Size">
                 <option value="0.05">0.05 mm</option>
                 <option value="0.10">0.10 mm</option>
                 <option value="0.25" selected>0.25 mm</option>
@@ -1387,7 +1387,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               </select>
 
               <span class="cad-param-label">Net:</span>
-              <select id="rust-net-select" class="cad-select" style="max-width:115px;" title="Highlight electrical net across all layers">
+              <select id="rust-net-select" class="cad-select" style="width:115px;" title="Highlight electrical net across all layers">
                 <option value="0">[All Nets]</option>
               </select>
 
@@ -3777,6 +3777,10 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
         }) as Box<dyn FnMut(_)>);
         let _ = sch_panel.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
         cb.forget();
+    }
+
+    if let Some(param_bar) = doc.get_element_by_id("cad-param-bar") {
+        param_bar.set_scroll_left(0);
     }
 }
 

@@ -392,6 +392,9 @@ function __wbg_get_imports() {
         __wbg_set_innerHTML_7d84b81d6f2a9fdf: function(arg0, arg1, arg2) {
             arg0.innerHTML = getStringFromWasm0(arg1, arg2);
         },
+        __wbg_set_scrollLeft_f8615c1bd16cdce1: function(arg0, arg1) {
+            arg0.scrollLeft = arg1;
+        },
         __wbg_set_textContent_e027901c7bc836b5: function(arg0, arg1, arg2) {
             arg0.textContent = arg1 === 0 ? undefined : getStringFromWasm0(arg1, arg2);
         },
