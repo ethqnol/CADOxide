@@ -1,4 +1,4 @@
-# CADoxide — 100% Pure Rust Hardware Collaboration Platform
+# CADoxide
 
 **CADoxide** is an open-core, dual-mode hardware design review, collaboration, and inspection platform built for ultra-high-density PCB designs. It features a **100% Pure Rust WASM frontend** with an **Instanced WebGL2/WGPU Signed Distance Field (SDF) GPU shader engine**, paired with a **distributed, broker-backed Rust Axum server** and **Tauri v2 desktop core**.
 
@@ -51,7 +51,7 @@ All JavaScript/TypeScript and React layers have been completely eliminated. The 
 
 ---
 
-## How the Entire System Works: Deep Dive
+## Architecture
 
 ### 1. Ingestion & Pure-Rust KiCad S-Expression Parser (`parser.rs`)
 - When a `.kicad_pcb` file (such as the 4-layer `CM5_MINIMA_3.kicad_pcb` or multi-sheet `complex_hierarchy.kicad_pcb`) is opened, the raw text is parsed line-by-line without any intermediary JSON representation.
