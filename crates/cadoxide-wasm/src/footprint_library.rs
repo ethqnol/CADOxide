@@ -203,6 +203,8 @@ impl FootprintDefinition {
             layer_mask: silk_layer,
             is_ref: true,
         });
+
+        board.rebuild_ratsnest();
     }
 }
 

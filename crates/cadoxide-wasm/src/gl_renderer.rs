@@ -1,7 +1,7 @@
 use wasm_bindgen::JsCast;
 use web_sys::{
     HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlBuffer, WebGlProgram, WebGlShader,
-    WebGlVertexArrayObject,
+    WebGlUniformLocation, WebGlVertexArrayObject,
 };
 
 const BG_VS_SRC: &str = r#"#version 300 es
@@ -500,6 +500,25 @@ void main() {
 }
 "#;
 
+#[derive(Clone)]
+struct ShaderUniforms {
+    u_center_and_scale: Option<WebGlUniformLocation>,
+    u_viewport_and_opacities: Option<WebGlUniformLocation>,
+    u_diff_params: Option<WebGlUniformLocation>,
+    u_3d_and_hover: Option<WebGlUniformLocation>,
+    u_display_opts: Option<WebGlUniformLocation>,
+    u_selected_net_id: Option<WebGlUniformLocation>,
+    u_selected_inst_id: Option<WebGlUniformLocation>,
+}
+
+#[derive(Clone)]
+struct BgShaderUniforms {
+    u_center_and_scale: Option<WebGlUniformLocation>,
+    u_viewport_and_opacities: Option<WebGlUniformLocation>,
+    u_board_bounds: Option<WebGlUniformLocation>,
+    u_3d_and_hover: Option<WebGlUniformLocation>,
+}
+
 pub struct RustGpuRenderer {
     canvas: HtmlCanvasElement,
     gl: GL,
@@ -507,6 +526,8 @@ pub struct RustGpuRenderer {
     program: WebGlProgram,
     vao: WebGlVertexArrayObject,
     instance_buf: WebGlBuffer,
+    uniforms: ShaderUniforms,
+    bg_uniforms: BgShaderUniforms,
     pub instance_count: i32,
     pub center_mm: (f32, f32),
     pub scale_px_per_mm: f32,
@@ -527,6 +548,7 @@ pub struct RustGpuRenderer {
     pub show_grid: bool,
     pub grid_step_mm: f32,
     pub active_draw_layer_bit: u32,
+    pub cached_rect: (f64, f64, f64, f64),
 }
 
 impl RustGpuRenderer {
@@ -564,6 +586,26 @@ impl RustGpuRenderer {
 
         gl.bind_vertex_array(None);
 
+        let bg_uniforms = BgShaderUniforms {
+            u_center_and_scale: gl.get_uniform_location(&bg_program, "u_center_and_scale"),
+            u_viewport_and_opacities: gl.get_uniform_location(&bg_program, "u_viewport_and_opacities"),
+            u_board_bounds: gl.get_uniform_location(&bg_program, "u_board_bounds"),
+            u_3d_and_hover: gl.get_uniform_location(&bg_program, "u_3d_and_hover"),
+        };
+
+        let uniforms = ShaderUniforms {
+            u_center_and_scale: gl.get_uniform_location(&program, "u_center_and_scale"),
+            u_viewport_and_opacities: gl.get_uniform_location(&program, "u_viewport_and_opacities"),
+            u_diff_params: gl.get_uniform_location(&program, "u_diff_params"),
+            u_3d_and_hover: gl.get_uniform_location(&program, "u_3d_and_hover"),
+            u_display_opts: gl.get_uniform_location(&program, "u_display_opts"),
+            u_selected_net_id: gl.get_uniform_location(&program, "u_selected_net_id"),
+            u_selected_inst_id: gl.get_uniform_location(&program, "u_selected_inst_id"),
+        };
+
+        let rect = canvas.get_bounding_client_rect();
+        let cached_rect = (rect.left(), rect.top(), rect.width(), rect.height());
+
         Ok(Self {
             canvas,
             gl,
@@ -571,6 +613,8 @@ impl RustGpuRenderer {
             program,
             vao,
             instance_buf,
+            uniforms,
+            bg_uniforms,
             instance_count: 0,
             center_mm: (130.0, 95.0),
             scale_px_per_mm: 8.0,
@@ -591,19 +635,28 @@ impl RustGpuRenderer {
             show_grid: true,
             grid_step_mm: 0.5,
             active_draw_layer_bit: 1,
+            cached_rect,
         })
     }
 
     pub fn resize_to_parent(&mut self) {
         if let Some(parent) = self.canvas.parent_element() {
-            let rect = parent.get_bounding_client_rect();
+            let client_w = parent.client_width();
+            let client_h = parent.client_height();
+            if client_w <= 0 || client_h <= 0 {
+                return;
+            }
             let dpr = web_sys::window()
                 .map(|w| w.device_pixel_ratio())
                 .unwrap_or(1.0);
-            let w = (rect.width() * dpr).max(300.0) as u32;
-            let h = (rect.height() * dpr).max(200.0) as u32;
-            self.canvas.set_width(w);
-            self.canvas.set_height(h);
+            let w = ((client_w as f64) * dpr).max(300.0) as u32;
+            let h = ((client_h as f64) * dpr).max(200.0) as u32;
+            if self.canvas.width() != w || self.canvas.height() != h {
+                self.canvas.set_width(w);
+                self.canvas.set_height(h);
+                let rect = self.canvas.get_bounding_client_rect();
+                self.cached_rect = (rect.left(), rect.top(), rect.width(), rect.height());
+            }
         }
     }
 
@@ -631,13 +684,13 @@ impl RustGpuRenderer {
     }
 
     pub fn screen_to_board_mm(&self, client_x: f64, client_y: f64) -> (f32, f32) {
-        let rect = self.canvas.get_bounding_client_rect();
+        let (rect_left, rect_top, rect_width, rect_height) = self.cached_rect;
         let dpr = web_sys::window()
             .map(|w| w.device_pixel_ratio())
             .unwrap_or(1.0) as f32;
         let flip_sign = if self.flip_board_view { -1.0 } else { 1.0 };
-        let px_x = ((client_x - rect.left()) - rect.width() * 0.5) as f32 * dpr * flip_sign;
-        let px_y = ((client_y - rect.top()) - rect.height() * 0.5) as f32 * dpr;
+        let px_x = ((client_x - rect_left) - rect_width * 0.5) as f32 * dpr * flip_sign;
+        let px_y = ((client_y - rect_top) - rect_height * 0.5) as f32 * dpr;
         let rx = px_x / self.scale_px_per_mm;
         let sy_mm = px_y / self.scale_px_per_mm;
         if self.mode_3d_explode > 0.05 {
@@ -724,39 +777,36 @@ impl RustGpuRenderer {
         // 1. Render CAD Metric Grid & FR4 Board Substrate Pass
         self.gl.disable(GL::BLEND);
         self.gl.use_program(Some(&self.bg_program));
-        if let Some(u1) = self.gl.get_uniform_location(&self.bg_program, "u_center_and_scale") {
+        if let Some(ref u1) = self.bg_uniforms.u_center_and_scale {
             self.gl.uniform4f(
-                Some(&u1),
+                Some(u1),
                 self.center_mm.0,
                 self.center_mm.1,
                 self.scale_px_per_mm,
                 self.grid_step_mm,
             );
         }
-        if let Some(u2) = self
-            .gl
-            .get_uniform_location(&self.bg_program, "u_viewport_and_opacities")
-        {
+        if let Some(ref u2) = self.bg_uniforms.u_viewport_and_opacities {
             self.gl.uniform4f(
-                Some(&u2),
+                Some(u2),
                 w as f32,
                 h as f32,
                 if self.show_grid { 1.0 } else { 0.0 },
                 if self.flip_board_view { 1.0 } else { 0.0 },
             );
         }
-        if let Some(ub) = self.gl.get_uniform_location(&self.bg_program, "u_board_bounds") {
+        if let Some(ref ub) = self.bg_uniforms.u_board_bounds {
             self.gl.uniform4f(
-                Some(&ub),
+                Some(ub),
                 self.bounds[0],
                 self.bounds[1],
                 self.bounds[2],
                 self.bounds[3],
             );
         }
-        if let Some(u4) = self.gl.get_uniform_location(&self.bg_program, "u_3d_and_hover") {
+        if let Some(ref u4) = self.bg_uniforms.u_3d_and_hover {
             self.gl.uniform4f(
-                Some(&u4),
+                Some(u4),
                 self.mode_3d_explode,
                 self.yaw_rad,
                 self.pitch_rad,
@@ -775,12 +825,9 @@ impl RustGpuRenderer {
         self.gl.blend_func(GL::SRC_ALPHA, GL::ONE_MINUS_SRC_ALPHA);
         self.gl.use_program(Some(&self.program));
 
-        if let Some(u1) = self
-            .gl
-            .get_uniform_location(&self.program, "u_center_and_scale")
-        {
+        if let Some(ref u1) = self.uniforms.u_center_and_scale {
             self.gl.uniform4f(
-                Some(&u1),
+                Some(u1),
                 self.center_mm.0,
                 self.center_mm.1,
                 self.scale_px_per_mm,
@@ -788,12 +835,9 @@ impl RustGpuRenderer {
             );
         }
 
-        if let Some(u2) = self
-            .gl
-            .get_uniform_location(&self.program, "u_viewport_and_opacities")
-        {
+        if let Some(ref u2) = self.uniforms.u_viewport_and_opacities {
             self.gl.uniform4f(
-                Some(&u2),
+                Some(u2),
                 w as f32,
                 h as f32,
                 self.opacities[0],
@@ -801,9 +845,9 @@ impl RustGpuRenderer {
             );
         }
 
-        if let Some(u3) = self.gl.get_uniform_location(&self.program, "u_diff_params") {
+        if let Some(ref u3) = self.uniforms.u_diff_params {
             self.gl.uniform4f(
-                Some(&u3),
+                Some(u3),
                 self.diff_mode,
                 self.wipe_ratio,
                 self.opacities[2],
@@ -811,9 +855,9 @@ impl RustGpuRenderer {
             );
         }
 
-        if let Some(u4) = self.gl.get_uniform_location(&self.program, "u_3d_and_hover") {
+        if let Some(ref u4) = self.uniforms.u_3d_and_hover {
             self.gl.uniform4f(
-                Some(&u4),
+                Some(u4),
                 self.mode_3d_explode,
                 self.yaw_rad,
                 self.pitch_rad,
@@ -821,9 +865,9 @@ impl RustGpuRenderer {
             );
         }
 
-        if let Some(ud) = self.gl.get_uniform_location(&self.program, "u_display_opts") {
+        if let Some(ref ud) = self.uniforms.u_display_opts {
             self.gl.uniform4f(
-                Some(&ud),
+                Some(ud),
                 self.high_contrast_mode as f32,
                 if self.flip_board_view { 1.0 } else { 0.0 },
                 if self.sketch_mode { 1.0 } else { 0.0 },
@@ -831,18 +875,12 @@ impl RustGpuRenderer {
             );
         }
 
-        if let Some(u5) = self
-            .gl
-            .get_uniform_location(&self.program, "u_selected_net_id")
-        {
-            self.gl.uniform1i(Some(&u5), self.selected_net_id);
+        if let Some(ref u5) = self.uniforms.u_selected_net_id {
+            self.gl.uniform1i(Some(u5), self.selected_net_id);
         }
 
-        if let Some(u6) = self
-            .gl
-            .get_uniform_location(&self.program, "u_selected_inst_id")
-        {
-            self.gl.uniform1i(Some(&u6), self.selected_instance_id);
+        if let Some(ref u6) = self.uniforms.u_selected_inst_id {
+            self.gl.uniform1i(Some(u6), self.selected_instance_id);
         }
 
         self.gl

@@ -61,8 +61,37 @@ pub struct CopperZone {
     pub layer_mask: u32,
     pub is_keepout: bool,
     pub is_teardrop: bool,
+    pub bounds: [f32; 4], // [min_x, min_y, max_x, max_y]
     pub outline: Vec<(f32, f32)>,
     pub filled_polys: Vec<Vec<(f32, f32)>>,
+}
+
+impl CopperZone {
+    pub fn compute_bounds(outline: &[(f32, f32)], filled_polys: &[Vec<(f32, f32)>]) -> [f32; 4] {
+        let mut min_x = f32::MAX;
+        let mut min_y = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut max_y = f32::MIN;
+        for pt in outline {
+            if pt.0 < min_x { min_x = pt.0; }
+            if pt.0 > max_x { max_x = pt.0; }
+            if pt.1 < min_y { min_y = pt.1; }
+            if pt.1 > max_y { max_y = pt.1; }
+        }
+        for poly in filled_polys {
+            for pt in poly {
+                if pt.0 < min_x { min_x = pt.0; }
+                if pt.0 > max_x { max_x = pt.0; }
+                if pt.1 < min_y { min_y = pt.1; }
+                if pt.1 > max_y { max_y = pt.1; }
+            }
+        }
+        if min_x <= max_x {
+            [min_x, min_y, max_x, max_y]
+        } else {
+            [0.0, 0.0, 0.0, 0.0]
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -121,6 +150,7 @@ pub struct ParsedBoard {
     pub pad_labels: Vec<PadLabel>,
     pub texts: Vec<BoardText>,
     pub dimensions: Vec<CadDimension>,
+    pub ratsnest_lines: Vec<((f32, f32), (f32, f32), u32)>,
     pub total_pads: usize,
     pub total_vias: usize,
     pub total_tracks: usize,
@@ -147,12 +177,81 @@ impl ParsedBoard {
             pad_labels: Vec::new(),
             texts: Vec::new(),
             dimensions: Vec::new(),
+            ratsnest_lines: Vec::new(),
             total_pads: 0,
             total_vias: 0,
             total_tracks: 0,
         };
         board.rebuild_index_and_nets();
         board
+    }
+
+    pub fn rebuild_ratsnest(&mut self) {
+        self.ratsnest_lines.clear();
+        let plane_nets: std::collections::HashSet<u32> = self
+            .zones
+            .iter()
+            .filter(|z| !z.is_keepout && !z.is_teardrop)
+            .map(|z| z.net_id)
+            .collect();
+
+        let mut pads_by_net: HashMap<u32, Vec<(f32, f32)>> = HashMap::new();
+        for pad in &self.pad_labels {
+            if pad.net_id == 0 || plane_nets.contains(&pad.net_id) {
+                continue;
+            }
+            if let Some(stats) = self.nets.get(&pad.net_id) {
+                if stats.segment_count > 0 && stats.segment_count >= stats.pad_count.saturating_sub(1) {
+                    continue;
+                }
+            }
+            pads_by_net.entry(pad.net_id).or_default().push((pad.x, pad.y));
+        }
+
+        for (nid, pts) in pads_by_net {
+            if pts.len() < 2 {
+                continue;
+            }
+            if pts.len() > 30 {
+                for i in 0..pts.len() - 1 {
+                    self.ratsnest_lines.push((pts[i], pts[i + 1], nid));
+                }
+                continue;
+            }
+
+            let mut in_tree = vec![false; pts.len()];
+            in_tree[0] = true;
+            let mut tree_count = 1;
+
+            while tree_count < pts.len() {
+                let mut best_dist = f32::MAX;
+                let mut best_edge = (0, 0);
+
+                for i in 0..pts.len() {
+                    if !in_tree[i] {
+                        continue;
+                    }
+                    for j in 0..pts.len() {
+                        if in_tree[j] {
+                            continue;
+                        }
+                        let dx = pts[i].0 - pts[j].0;
+                        let dy = pts[i].1 - pts[j].1;
+                        let d = dx * dx + dy * dy;
+                        if d < best_dist {
+                            best_dist = d;
+                            best_edge = (i, j);
+                        }
+                    }
+                }
+
+                if best_dist < 4000.0 {
+                    self.ratsnest_lines.push((pts[best_edge.0], pts[best_edge.1], nid));
+                }
+                in_tree[best_edge.1] = true;
+                tree_count += 1;
+            }
+        }
     }
 
     /// O(1) sub-microsecond spatial hash query for real-time cursor hover & click inspection.
@@ -814,6 +913,7 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
     board.zones = zones;
     board.pad_labels = pad_labels;
     board.texts = texts;
+    board.rebuild_ratsnest();
     board
 }
 
@@ -850,12 +950,14 @@ fn parse_zone_block(block: &str, zones: &mut Vec<CopperZone>) {
     }
 
     if !outline.is_empty() || !filled_polys.is_empty() {
+        let bounds = CopperZone::compute_bounds(&outline, &filled_polys);
         zones.push(CopperZone {
             net_id,
             net_name,
             layer_mask,
             is_keepout,
             is_teardrop,
+            bounds,
             outline,
             filled_polys,
         });
@@ -1360,7 +1462,7 @@ fn process_primitive_block(
                             x: wx,
                             y: wy,
                             angle_deg: lrot,
-                            text: txt,
+                            text: txt.replace("\\n", "\n"),
                             size_mm,
                             layer_mask,
                             is_ref,

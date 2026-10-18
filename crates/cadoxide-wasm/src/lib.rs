@@ -156,9 +156,44 @@ pub struct AppController {
     pub footprint_search_query: String,
     pub active_footprint_to_place: Option<FootprintDefinition>,
     pub next_ref_indices: std::collections::HashMap<String, usize>,
+    pub render_pending: bool,
 }
 
 impl AppController {
+    pub fn mark_render_dirty(&mut self, state: &Rc<RefCell<AppController>>) {
+        if self.render_pending {
+            return;
+        }
+        self.render_pending = true;
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move || {
+            let mut a = st.borrow_mut();
+            a.render_pending = false;
+            a.draw_all();
+        }) as Box<dyn FnMut()>);
+        if let Some(win) = web_sys::window() {
+            let _ = win.request_animation_frame(cb.as_ref().unchecked_ref());
+        }
+        cb.forget();
+    }
+
+    pub fn schedule_render(state: &Rc<RefCell<AppController>>) {
+        if state.borrow().render_pending {
+            return;
+        }
+        state.borrow_mut().render_pending = true;
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move || {
+            let mut a = st.borrow_mut();
+            a.render_pending = false;
+            a.draw_all();
+        }) as Box<dyn FnMut()>);
+        if let Some(win) = web_sys::window() {
+            let _ = win.request_animation_frame(cb.as_ref().unchecked_ref());
+        }
+        cb.forget();
+    }
+
     pub fn sel_filter_mask(&self) -> u32 {
         (if self.sel_tracks { 1 } else { 0 })
             | (if self.sel_vias { 2 } else { 0 })
@@ -255,12 +290,14 @@ impl AppController {
                         .get(&net_id)
                         .map(|n| n.name.clone())
                         .unwrap_or_else(|| "GND".to_string());
+                    let bounds = CopperZone::compute_bounds(&pts, std::slice::from_ref(&pts));
                     self.current_board.zones.push(CopperZone {
                         net_id,
                         net_name,
                         layer_mask: layer,
                         is_keepout,
                         is_teardrop: false,
+                        bounds,
                         outline: pts.clone(),
                         filled_polys: vec![pts],
                     });
@@ -1271,6 +1308,7 @@ pub fn start_cadoxide_app() {
         footprint_search_query: String::new(),
         active_footprint_to_place: None,
         next_ref_indices: std::collections::HashMap::new(),
+        render_pending: false,
     }));
 
     build_shell_dom(&doc, &root, state.clone());
@@ -1812,8 +1850,8 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
             if let Some(ref mut r) = app.renderer {
                 r.zoom_at_cursor(factor, e.client_x() as f64, e.client_y() as f64);
             }
-            app.draw_all();
             app.update_telemetry_hud();
+            app.mark_render_dirty(&st);
         }) as Box<dyn FnMut(_)>);
         let _ = canvas.add_event_listener_with_callback("wheel", on_wheel.as_ref().unchecked_ref());
         on_wheel.forget();
@@ -2254,7 +2292,7 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                         r.pan_by_css_px(dx, dy);
                     }
                 }
-                app.draw_all();
+                app.mark_render_dirty(&st);
                 return;
             }
 
@@ -2316,7 +2354,7 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                 }
             }
             if need_redraw {
-                app.draw_all();
+                app.mark_render_dirty(&st);
             }
         }) as Box<dyn FnMut(_)>);
         let _ =
@@ -2373,7 +2411,12 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                         r.selected_instance_id = sel_i32;
                     }
                     app.select_net_probe(net_to_select);
+                    return;
                 }
+            }
+
+            if was_dragging {
+                app.draw_all();
             }
         }) as Box<dyn FnMut(_)>);
         let _ = canvas.add_event_listener_with_callback("mouseup", on_up.as_ref().unchecked_ref());
@@ -2385,11 +2428,15 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
         let st = state;
         let on_leave = Closure::wrap(Box::new(move |_e: MouseEvent| {
             let mut app = st.borrow_mut();
+            let was_dragging = app.is_dragging || app.is_dragging_primitive;
             if app.is_dragging_primitive {
                 app.current_board.rebuild_index_and_nets();
             }
             app.is_dragging = false;
             app.is_dragging_primitive = false;
+            if was_dragging {
+                app.draw_all();
+            }
         }) as Box<dyn FnMut(_)>);
         let _ = canvas
             .add_event_listener_with_callback("mouseleave", on_leave.as_ref().unchecked_ref());

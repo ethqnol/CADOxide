@@ -144,6 +144,17 @@ pub fn render_cad_overlay(
 
             let z_layer = z_for_layer(zone.layer_mask);
 
+            // Viewport AABB Culling (Skip offscreen zones entirely in 1 check)
+            let (s_min_x, s_min_y) = renderer.board_mm_to_device_px(zone.bounds[0], zone.bounds[1], z_layer);
+            let (s_max_x, s_max_y) = renderer.board_mm_to_device_px(zone.bounds[2], zone.bounds[3], z_layer);
+            let b_min_x = s_min_x.min(s_max_x);
+            let b_max_x = s_min_x.max(s_max_x);
+            let b_min_y = s_min_y.min(s_max_y);
+            let b_max_y = s_min_y.max(s_max_y);
+            if b_max_x < -30.0 || b_min_x > w_f64 + 30.0 || b_max_y < -30.0 || b_min_y > h_f64 + 30.0 {
+                continue;
+            }
+
             if cfg.zone_display_mode == 0 && !zone.is_keepout && !cfg.is_dragging {
                 let fill_alpha = (if zone.is_teardrop { 0.68 } else { 0.34 }) * dim_factor;
                 set_prop(
@@ -157,6 +168,9 @@ pub fn render_cad_overlay(
                 } else {
                     std::slice::from_ref(&zone.outline)
                 };
+
+                let mut has_drawn_any = false;
+                ctx.begin_path();
 
                 for poly in polys_to_draw {
                     if poly.len() < 3 {
@@ -185,7 +199,6 @@ pub fn render_cad_overlay(
                         continue;
                     }
 
-                    ctx.begin_path();
                     let (x0, y0) = renderer.board_mm_to_device_px(poly[0].0, poly[0].1, z_layer);
                     ctx.move_to(x0, y0);
                     let mut last_px = x0;
@@ -204,8 +217,11 @@ pub fn render_cad_overlay(
                         last_py = py;
                     }
                     ctx.close_path();
+                    has_drawn_any = true;
+                }
+
+                if has_drawn_any {
                     ctx.fill();
-                    // Do not call ctx.stroke() on filled area polygons; outline is stroked cleanly below
                 }
             }
 
@@ -248,91 +264,19 @@ pub fn render_cad_overlay(
     // 2. Ratsnest Airwires (Unrouted / Same-Net Pad Connections)
     // ========================================================================
     let target_net = renderer.selected_net_id;
-    if (cfg.show_ratsnest || target_net > 0) && renderer.diff_mode < 0.5 && board.pad_labels.len() > 1 && !cfg.is_dragging {
+    if (cfg.show_ratsnest || target_net > 0) && renderer.diff_mode < 0.5 && !board.ratsnest_lines.is_empty() && !cfg.is_dragging {
         set_prop(&ctx, "strokeStyle", "rgba(160, 205, 255, 0.65)");
         set_num_prop(&ctx, "lineWidth", 1.1);
 
-        let plane_nets: std::collections::HashSet<u32> = board
-            .zones
-            .iter()
-            .filter(|z| !z.is_keepout && !z.is_teardrop)
-            .map(|z| z.net_id)
-            .collect();
-
-        let mut pads_by_net: std::collections::HashMap<u32, Vec<(f32, f32)>> =
-            std::collections::HashMap::new();
-        for pad in &board.pad_labels {
-            if pad.net_id == 0 {
-                continue;
-            }
-            if target_net > 0 {
-                if pad.net_id != (target_net as u32) {
-                    continue;
-                }
-            } else if plane_nets.contains(&pad.net_id) {
-                continue;
-            } else if let Some(stats) = board.nets.get(&pad.net_id) {
-                if stats.segment_count > 0 && stats.segment_count >= stats.pad_count.saturating_sub(1) {
-                    continue;
-                }
-            }
-            pads_by_net.entry(pad.net_id).or_default().push((pad.x, pad.y));
-        }
-
         ctx.begin_path();
-        for (_nid, pts) in pads_by_net {
-            if pts.len() < 2 {
+        for (p0, p1, nid) in &board.ratsnest_lines {
+            if target_net > 0 && *nid != (target_net as u32) {
                 continue;
             }
-
-            if pts.len() > 30 {
-                // Linear nearest-neighbor chaining for very large nets (avoids O(N^3) Prim freeze)
-                let (x0, y0) = renderer.board_mm_to_device_px(pts[0].0, pts[0].1, 2.2);
-                ctx.move_to(x0, y0);
-                for pt in &pts[1..] {
-                    let (px, py) = renderer.board_mm_to_device_px(pt.0, pt.1, 2.2);
-                    ctx.line_to(px, py);
-                }
-                continue;
-            }
-
-            let mut in_tree = vec![false; pts.len()];
-            in_tree[0] = true;
-            let mut tree_count = 1;
-
-            while tree_count < pts.len() {
-                let mut best_dist = f32::MAX;
-                let mut best_edge = (0, 0);
-
-                for i in 0..pts.len() {
-                    if !in_tree[i] {
-                        continue;
-                    }
-                    for j in 0..pts.len() {
-                        if in_tree[j] {
-                            continue;
-                        }
-                        let dx = pts[i].0 - pts[j].0;
-                        let dy = pts[i].1 - pts[j].1;
-                        let d = dx * dx + dy * dy;
-                        if d < best_dist {
-                            best_dist = d;
-                            best_edge = (i, j);
-                        }
-                    }
-                }
-
-                if best_dist < 4000.0 {
-                    let p0 = pts[best_edge.0];
-                    let p1 = pts[best_edge.1];
-                    let (x0, y0) = renderer.board_mm_to_device_px(p0.0, p0.1, 2.2);
-                    let (x1, y1) = renderer.board_mm_to_device_px(p1.0, p1.1, 2.2);
-                    ctx.move_to(x0, y0);
-                    ctx.line_to(x1, y1);
-                }
-                in_tree[best_edge.1] = true;
-                tree_count += 1;
-            }
+            let (x0, y0) = renderer.board_mm_to_device_px(p0.0, p0.1, 2.2);
+            let (x1, y1) = renderer.board_mm_to_device_px(p1.0, p1.1, 2.2);
+            ctx.move_to(x0, y0);
+            ctx.line_to(x1, y1);
         }
         ctx.stroke();
     }
@@ -340,9 +284,12 @@ pub fn render_cad_overlay(
     // ========================================================================
     // 3. Footprint Reference / Value Labels & Board Text
     // ========================================================================
-    if cfg.show_fp_text && scale >= 4.5 && renderer.diff_mode < 0.5 {
+    if cfg.show_fp_text && scale >= 4.5 && renderer.diff_mode < 0.5 && !cfg.is_dragging {
         set_prop(&ctx, "textAlign", "center");
         set_prop(&ctx, "textBaseline", "middle");
+
+        let mut last_font_bucket: i32 = 0;
+        let mut last_color: &'static str = "";
 
         for txt in &board.texts {
             if (txt.layer_mask & active_mask) == 0 {
@@ -362,48 +309,65 @@ pub fn render_cad_overlay(
                 continue;
             }
 
-            let alpha = if hc_mode == 1 && (txt.layer_mask & active_draw_bit) == 0 {
-                0.22
-            } else {
-                0.92
+            let font_bucket = ((font_px as i32) / 2) * 2;
+            if font_bucket != last_font_bucket {
+                last_font_bucket = font_bucket;
+                let font_str: &'static str = match font_bucket {
+                    8 => "600 8px 'JetBrains Mono', monospace",
+                    10 => "600 10px 'JetBrains Mono', monospace",
+                    12 => "600 12px 'JetBrains Mono', monospace",
+                    14 => "600 14px 'JetBrains Mono', monospace",
+                    16 => "600 16px 'JetBrains Mono', monospace",
+                    18 => "600 18px 'JetBrains Mono', monospace",
+                    20 => "600 20px 'JetBrains Mono', monospace",
+                    22 => "600 22px 'JetBrains Mono', monospace",
+                    24 => "600 24px 'JetBrains Mono', monospace",
+                    26 => "600 26px 'JetBrains Mono', monospace",
+                    28 => "600 28px 'JetBrains Mono', monospace",
+                    30 => "600 30px 'JetBrains Mono', monospace",
+                    _ => "600 32px 'JetBrains Mono', monospace",
+                };
+                set_prop(&ctx, "font", font_str);
+            }
+
+            let is_dim = hc_mode == 1 && (txt.layer_mask & active_draw_bit) == 0;
+            let color_str: &'static str = match (txt.layer_mask, is_dim) {
+                (m, false) if (m & LAYER_F_SILKS) != 0 => "rgba(242, 237, 161, 0.92)",
+                (m, true) if (m & LAYER_F_SILKS) != 0 => "rgba(242, 237, 161, 0.22)",
+                (m, false) if (m & LAYER_B_SILKS) != 0 => "rgba(232, 178, 166, 0.92)",
+                (m, true) if (m & LAYER_B_SILKS) != 0 => "rgba(232, 178, 166, 0.22)",
+                (m, false) if (m & LAYER_F_CU) != 0 => "rgba(225, 75, 75, 0.92)",
+                (m, true) if (m & LAYER_F_CU) != 0 => "rgba(225, 75, 75, 0.22)",
+                (m, false) if (m & LAYER_B_CU) != 0 => "rgba(75, 155, 235, 0.92)",
+                (m, true) if (m & LAYER_B_CU) != 0 => "rgba(75, 155, 235, 0.22)",
+                (m, false) if (m & LAYER_F_CRTYD) != 0 => "rgba(224, 56, 216, 0.92)",
+                (m, true) if (m & LAYER_F_CRTYD) != 0 => "rgba(224, 56, 216, 0.22)",
+                (m, false) if (m & LAYER_EDGE_CUTS) != 0 => "rgba(216, 194, 56, 0.92)",
+                (m, true) if (m & LAYER_EDGE_CUTS) != 0 => "rgba(216, 194, 56, 0.22)",
+                (m, false) if (m & (LAYER_F_FAB | LAYER_B_FAB)) != 0 => "rgba(155, 165, 180, 0.78)",
+                (m, true) if (m & (LAYER_F_FAB | LAYER_B_FAB)) != 0 => "rgba(155, 165, 180, 0.22)",
+                (m, false) if (m & (LAYER_USER_DWGS | LAYER_USER_CMTS)) != 0 => "rgba(148, 182, 224, 0.92)",
+                (m, true) if (m & (LAYER_USER_DWGS | LAYER_USER_CMTS)) != 0 => "rgba(148, 182, 224, 0.22)",
+                (_, false) => "rgba(210, 218, 228, 0.92)",
+                (_, true) => "rgba(210, 218, 228, 0.22)",
             };
 
-            let color = if (txt.layer_mask & LAYER_F_SILKS) != 0 {
-                format!("rgba(242, 237, 161, {:.2})", alpha)
-            } else if (txt.layer_mask & LAYER_B_SILKS) != 0 {
-                format!("rgba(232, 178, 166, {:.2})", alpha)
-            } else if (txt.layer_mask & LAYER_F_CU) != 0 {
-                format!("rgba(225, 75, 75, {:.2})", alpha)
-            } else if (txt.layer_mask & LAYER_B_CU) != 0 {
-                format!("rgba(75, 155, 235, {:.2})", alpha)
-            } else if (txt.layer_mask & LAYER_F_CRTYD) != 0 {
-                format!("rgba(224, 56, 216, {:.2})", alpha)
-            } else if (txt.layer_mask & LAYER_EDGE_CUTS) != 0 {
-                format!("rgba(216, 194, 56, {:.2})", alpha)
-            } else if (txt.layer_mask & (LAYER_F_FAB | LAYER_B_FAB)) != 0 {
-                format!("rgba(155, 165, 180, {:.2})", alpha * 0.85)
-            } else if (txt.layer_mask & (LAYER_USER_DWGS | LAYER_USER_CMTS)) != 0 {
-                format!("rgba(148, 182, 224, {:.2})", alpha)
+            if color_str != last_color {
+                last_color = color_str;
+                set_prop(&ctx, "fillStyle", color_str);
+            }
+
+            if !txt.text.contains('\n') {
+                let _ = ctx.fill_text(&txt.text, px, py);
             } else {
-                format!("rgba(210, 218, 228, {:.2})", alpha)
-            };
+                let line_height = (font_px * 1.25) as f64;
+                let lines: Vec<&str> = txt.text.split('\n').collect();
+                let total_height = (lines.len() as f64) * line_height;
+                let start_y = py - (total_height * 0.5) + (line_height * 0.5);
 
-            set_prop(
-                &ctx,
-                "font",
-                &format!("600 {:.1}px 'JetBrains Mono', monospace", font_px),
-            );
-            set_prop(&ctx, "fillStyle", &color);
-
-            // Unescape \n and render multiline text block with proper vertical alignment
-            let clean_text = txt.text.replace("\\n", "\n");
-            let lines: Vec<&str> = clean_text.split('\n').collect();
-            let line_height = (font_px * 1.25) as f64;
-            let total_height = (lines.len() as f64) * line_height;
-            let start_y = py - (total_height * 0.5) + (line_height * 0.5);
-
-            for (i, line) in lines.iter().enumerate() {
-                let _ = ctx.fill_text(line, px, start_y + (i as f64 * line_height));
+                for (i, line) in lines.iter().enumerate() {
+                    let _ = ctx.fill_text(line, px, start_y + (i as f64 * line_height));
+                }
             }
         }
     }
@@ -411,9 +375,12 @@ pub fn render_cad_overlay(
     // ========================================================================
     // 4. KiCad On-Pad Pin Numbers & Net Name Labels (1 / GND, +12V, etc.)
     // ========================================================================
-    if (cfg.show_pad_labels || cfg.show_pad_nets) && scale >= 9.5 && renderer.diff_mode < 0.5 {
+    if (cfg.show_pad_labels || cfg.show_pad_nets) && scale >= 9.5 && renderer.diff_mode < 0.5 && !cfg.is_dragging {
         set_prop(&ctx, "textAlign", "center");
         set_prop(&ctx, "textBaseline", "middle");
+
+        let mut last_font_bucket: i32 = 0;
+        let mut last_fill: &'static str = "";
 
         for pad in &board.pad_labels {
             if (pad.layer_mask & active_mask) == 0 {
@@ -444,21 +411,39 @@ pub fn render_cad_overlay(
 
             if has_pin && has_net && min_dim >= 22.0 {
                 let fsize = (min_dim * 0.28).clamp(8.0, 14.0);
-                set_prop(
-                    &ctx,
-                    "font",
-                    &format!("700 {:.1}px 'JetBrains Mono', monospace", fsize),
-                );
-                set_prop(&ctx, "fillStyle", "rgba(255, 255, 255, 0.92)");
+                let fbucket = ((fsize as i32) / 2) * 2;
+                if fbucket != last_font_bucket {
+                    last_font_bucket = fbucket;
+                    let font_str = match fbucket {
+                        8 => "700 8px 'JetBrains Mono', monospace",
+                        10 => "700 10px 'JetBrains Mono', monospace",
+                        12 => "700 12px 'JetBrains Mono', monospace",
+                        _ => "700 14px 'JetBrains Mono', monospace",
+                    };
+                    set_prop(&ctx, "font", font_str);
+                }
+                if last_fill != "white" {
+                    last_fill = "white";
+                    set_prop(&ctx, "fillStyle", "rgba(255, 255, 255, 0.92)");
+                }
                 let _ = ctx.fill_text(&pad.pin, px, py - fsize * 0.58);
 
                 let nsize = (fsize * 0.86).clamp(7.5, 12.0);
-                set_prop(
-                    &ctx,
-                    "font",
-                    &format!("600 {:.1}px 'JetBrains Mono', monospace", nsize),
-                );
-                set_prop(&ctx, "fillStyle", "rgba(220, 242, 255, 0.88)");
+                let nbucket = ((nsize as i32) / 2) * 2;
+                if nbucket != last_font_bucket {
+                    last_font_bucket = nbucket;
+                    let font_str = match nbucket {
+                        6 => "600 6px 'JetBrains Mono', monospace",
+                        8 => "600 8px 'JetBrains Mono', monospace",
+                        10 => "600 10px 'JetBrains Mono', monospace",
+                        _ => "600 12px 'JetBrains Mono', monospace",
+                    };
+                    set_prop(&ctx, "font", font_str);
+                }
+                if last_fill != "cyan" {
+                    last_fill = "cyan";
+                    set_prop(&ctx, "fillStyle", "rgba(220, 242, 255, 0.88)");
+                }
                 let short_net = if pad.net_name.len() > 8 {
                     &pad.net_name[..8]
                 } else {
@@ -467,22 +452,45 @@ pub fn render_cad_overlay(
                 let _ = ctx.fill_text(short_net, px, py + fsize * 0.62);
             } else if has_pin {
                 let fsize = (min_dim * 0.42).clamp(8.0, 14.0);
-                set_prop(
-                    &ctx,
-                    "font",
-                    &format!("700 {:.1}px 'JetBrains Mono', monospace", fsize),
-                );
-                set_prop(&ctx, "fillStyle", "rgba(255, 255, 255, 0.90)");
+                let fbucket = ((fsize as i32) / 2) * 2;
+                if fbucket != last_font_bucket {
+                    last_font_bucket = fbucket;
+                    let font_str = match fbucket {
+                        8 => "700 8px 'JetBrains Mono', monospace",
+                        10 => "700 10px 'JetBrains Mono', monospace",
+                        12 => "700 12px 'JetBrains Mono', monospace",
+                        _ => "700 14px 'JetBrains Mono', monospace",
+                    };
+                    set_prop(&ctx, "font", font_str);
+                }
+                if last_fill != "white" {
+                    last_fill = "white";
+                    set_prop(&ctx, "fillStyle", "rgba(255, 255, 255, 0.90)");
+                }
                 let _ = ctx.fill_text(&pad.pin, px, py);
             } else if has_net {
                 let fsize = (min_dim * 0.34).clamp(7.5, 12.0);
-                set_prop(
-                    &ctx,
-                    "font",
-                    &format!("600 {:.1}px 'JetBrains Mono', monospace", fsize),
-                );
-                set_prop(&ctx, "fillStyle", "rgba(220, 242, 255, 0.88)");
-                let _ = ctx.fill_text(&pad.net_name, px, py);
+                let fbucket = ((fsize as i32) / 2) * 2;
+                if fbucket != last_font_bucket {
+                    last_font_bucket = fbucket;
+                    let font_str = match fbucket {
+                        6 => "600 6px 'JetBrains Mono', monospace",
+                        8 => "600 8px 'JetBrains Mono', monospace",
+                        10 => "600 10px 'JetBrains Mono', monospace",
+                        _ => "600 12px 'JetBrains Mono', monospace",
+                    };
+                    set_prop(&ctx, "font", font_str);
+                }
+                if last_fill != "cyan" {
+                    last_fill = "cyan";
+                    set_prop(&ctx, "fillStyle", "rgba(220, 242, 255, 0.88)");
+                }
+                let short_net = if pad.net_name.len() > 8 {
+                    &pad.net_name[..8]
+                } else {
+                    &pad.net_name
+                };
+                let _ = ctx.fill_text(short_net, px, py);
             }
         }
     }
