@@ -1416,14 +1416,33 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
           <!-- Row 1: Native KiCad Pcbnew Desktop Menu Bar + Mode Tabs -->
           <div class="cad-topmenu">
             <div class="cad-menu-items">
-              <div class="cad-brand">
+              <div id="brand-home-link" class="cad-brand" title="Return to Projects Home (Click to open project manager)">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                   <rect x="1" y="1" width="14" height="14" rx="2" stroke="#c83434" stroke-width="1.5"/>
                   <circle cx="5" cy="5" r="1.5" fill="#79b8ff"/>
                   <circle cx="11" cy="11" r="1.5" fill="#79b8ff"/>
                   <path d="M5 5L8 8H11V11" stroke="#c83434" stroke-width="1.4" stroke-linecap="round"/>
                 </svg>
-                <span>CADOxide - PCB Editor</span>
+                <span>CADOxide</span>
+              </div>
+              <div class="cad-divider-v"></div>
+              <button id="btn-topbar-home" class="cad-menu-btn" style="color:#60a5fa;font-weight:600;display:flex;align-items:center;gap:4px;" title="Go to Projects Home (Return to project manager)">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+                <span>Home</span>
+              </button>
+              <div class="cad-divider-v"></div>
+              <div class="cad-project-picker" style="display:flex;align-items:center;gap:5px;background:#13161c;border:1px solid #28303d;border-radius:4px;padding:1px 6px;height:22px;">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span style="font-size:10px;color:#717a8c;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;">Project:</span>
+                <select id="rust-project-select" class="cad-select" style="border:none;background:transparent;padding:0 16px 0 2px;height:20px;font-size:11px;font-weight:600;color:#e2e8f0;cursor:pointer;max-width:200px;" title="Switch active project">
+                  <option value="complex_hierarchy">Audio Power Amp</option>
+                  <option value="cm5_minima">CM5 Carrier Board</option>
+                </select>
               </div>
               <div class="cad-divider-v"></div>
               <button id="menu-file-save" class="cad-menu-btn" title="File → Export .kicad_pcb">File</button>
@@ -1437,7 +1456,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
 
             <!-- Center Workspace Mode Tabs -->
             <div class="cad-tabs">
-              <button id="tab-home" class="cad-tab cad-tab-active">⌂ Home</button>
+              <button id="tab-home" class="cad-tab cad-tab-active">Home</button>
               <button id="tab-pcb" class="cad-tab">PCB Editor</button>
               <button id="tab-schematic" class="cad-tab">Schematic Editor</button>
               <button id="tab-diff" class="cad-tab">Layer Diff</button>
@@ -1445,19 +1464,14 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               <button id="tab-parts" class="cad-tab">BOM (8)</button>
             </div>
 
-            <!-- Right Project Selector & Quick Fabrication Package Actions -->
+            <!-- Right Quick Fabrication Package Actions -->
             <div class="cad-menubar-group">
               <button id="btn-topbar-new" class="cad-btn" style="background:#1c3826;border-color:#2e7d32;color:#86efac;font-weight:600;" title="Start a new PCB project from template">+ New</button>
-              <button id="btn-topbar-open" class="cad-btn" style="background:#1f2937;border-color:#374151;color:#e5e7eb;" title="Open .kicad_pcb file from computer">📂 Open...</button>
+              <button id="btn-topbar-open" class="cad-btn" style="background:#1f2937;border-color:#374151;color:#e5e7eb;" title="Open .kicad_pcb file from computer">Open...</button>
               <div class="cad-divider-v"></div>
-              <a id="btn-export-pcb" href="#" download="edited_board.kicad_pcb" class="cad-btn" title="Save / Download .kicad_pcb">💾 Save</a>
-              <a id="btn-export-gerbers" href="#" class="cad-btn" style="background:#142d1f;border-color:#2e7d32;color:#86efac;font-weight:700;" title="Generate &amp; Download Complete RS-274X Gerber &amp; NC Drill Fabrication ZIP">📦 Gerbers</a>
-              <button id="btn-open-fp-browser" class="cad-btn" style="background:#162436;border-color:#388bfd;color:#79b8ff;font-weight:600;" title="Browse IPC-7351 Standard Component Footprints (A)">🖵 Footprint (A)</button>
-              <div class="cad-divider-v"></div>
-              <select id="rust-project-select" class="cad-select" style="max-width:210px;" title="Active KiCad PCB File">
-                <option value="complex_hierarchy">complex_hierarchy.kicad_pcb</option>
-                <option value="cm5_minima">CM5_MINIMA_3.kicad_pcb</option>
-              </select>
+              <a id="btn-export-pcb" href="#" download="edited_board.kicad_pcb" class="cad-btn" title="Save / Download .kicad_pcb">Save</a>
+              <a id="btn-export-gerbers" href="#" class="cad-btn" style="background:#142d1f;border-color:#2e7d32;color:#86efac;font-weight:700;" title="Generate &amp; Download Complete RS-274X Gerber &amp; NC Drill Fabrication ZIP">Gerbers</a>
+              <button id="btn-open-fp-browser" class="cad-btn" style="background:#162436;border-color:#388bfd;color:#79b8ff;font-weight:600;" title="Browse IPC-7351 Standard Component Footprints (A)">Footprint (A)</button>
               <div class="cad-divider-v"></div>
               <div id="collab-status-pill" class="cad-btn" style="background:#0f291e;border-color:#166534;color:#4ade80;font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px;" title="Real-Time Co-Layout Connection Status">
                 <span style="width:7px;height:7px;border-radius:50%;background:#22c55e;"></span>
@@ -1604,183 +1618,122 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               <!-- Home Screen / Project Manager Hub View -->
               <div id="home-view-panel" class="home-view-panel">
                 <div class="home-container">
-                  <!-- Hero Banner -->
-                  <div class="home-hero">
-                    <div class="home-hero-left">
-                      <div class="home-hero-title">
-                        <svg width="22" height="22" viewBox="0 0 16 16" fill="none">
-                          <rect x="1" y="1" width="14" height="14" rx="2.5" stroke="#ef4444" stroke-width="1.6"/>
-                          <circle cx="5" cy="5" r="1.5" fill="#60a5fa"/>
-                          <circle cx="11" cy="11" r="1.5" fill="#60a5fa"/>
-                          <path d="M5 5L8 8H11V11" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round"/>
-                        </svg>
-                        <span>CADOxide EDA Studio</span>
-                        <span class="home-hero-badge">KiCad 8+ Compatible</span>
-                      </div>
-                      <div class="home-hero-sub">
-                        Fast, Rust &amp; WebGL2-powered printed circuit board workstation. Start a new board from industry-standard templates, open existing KiCad projects, or drag and drop any .kicad_pcb file directly from your computer.
-                      </div>
+                  <!-- Header: Title & Quick Actions -->
+                  <div class="home-header">
+                    <div>
+                      <div class="home-title">CADoxide Projects</div>
+                      <div class="home-subtitle">Select an existing board, start from a standard stackup, or import a KiCad PCB.</div>
                     </div>
-                    <div class="home-hero-actions">
+                    <div class="home-actions">
                       <button id="btn-home-new-proj" class="home-btn-primary" title="Start a new PCB project from template">
-                        <span>+</span>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         <span>New Project</span>
                       </button>
-                      <button id="btn-home-open-file" class="home-btn-secondary" title="Open .kicad_pcb file from your computer">
-                        <span>📂</span>
+                      <button id="btn-home-open-file" class="home-btn-secondary" title="Open .kicad_pcb file from disk">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                         <span>Open File...</span>
                       </button>
-                      <button id="btn-home-return-editor" class="home-btn-secondary" title="Return to active PCB editor workspace">
-                        <span>⚡</span>
-                        <span>PCB Editor →</span>
+                      <button id="btn-home-return-editor" class="home-btn-editor" title="Return to active PCB editor workspace">
+                        <span>Active Editor</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
                       </button>
                     </div>
                   </div>
 
-                  <!-- Drag & Drop Zone -->
-                  <div id="home-dropzone" class="home-dropzone" title="Click or drop a .kicad_pcb file here to open">
-                    <div class="home-dropzone-icon">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="17 8 12 3 7 8"></polyline>
-                        <line x1="12" y1="3" x2="12" y2="15"></line>
-                      </svg>
-                    </div>
-                    <div style="font-size:13.5px;font-weight:700;color:#f0f6fc;">
-                      Drag &amp; drop any <span style="color:#58a6ff;">.kicad_pcb</span> file here
-                    </div>
-                    <div style="font-size:11.5px;color:#8b949e;">
-                      or click to browse local files — instant zero-upload Rust WebAssembly parsing
-                    </div>
+                  <!-- Quick Import Drop Strip -->
+                  <div id="home-dropzone" class="home-drop-strip" title="Click or drop a .kicad_pcb file here to open">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    <span class="home-drop-text">Drop a <code>.kicad_pcb</code> file here to open directly, or click to browse local files</span>
                     <input type="file" id="home-file-input" accept=".kicad_pcb" style="display:none;" />
                   </div>
 
-                  <!-- Quick Start Templates Section -->
-                  <div>
+                  <!-- Projects List Section -->
+                  <div class="home-section">
                     <div class="home-section-header">
-                      <div class="home-section-title">
-                        <span>⚡</span>
-                        <span>Start New Project From Template</span>
-                      </div>
+                      <span class="home-section-title">Projects</span>
+                      <span style="font-size:11px;color:#64748b;">Click to open in editor</span>
                     </div>
-                    <div class="home-grid-templates">
-                      <div class="home-template-card" id="card-tmpl-blank" title="Create standard 2-layer 100x80mm board">
-                        <div class="home-template-header">
-                          <span style="font-size:18px;">▭</span>
+                    <div class="home-project-list">
+                      <!-- Project 1: Audio Power Amp -->
+                      <div class="home-project-row" id="card-proj-complex" title="Open Audio Power Amp">
+                        <div class="home-row-main">
+                          <div class="home-row-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8"><rect x="2" y="2" width="20" height="20" rx="3"></rect><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"></path></svg>
+                          </div>
                           <div>
-                            <div class="home-template-name">Blank 2-Layer Board</div>
-                            <span class="home-tag home-tag-green">100 × 80 mm</span>
+                            <div class="home-row-name">Audio Power Amp</div>
+                            <div class="home-row-file">samples/complex_hierarchy/complex_hierarchy.kicad_pcb</div>
                           </div>
                         </div>
-                        <div class="home-template-desc">
-                          Standard rectangular outline with M3 corner mounting holes and preconfigured GND / +3V3 / +5V power nets.
+                        <div class="home-row-meta">
+                          <span class="home-pill">2-Layer Copper</span>
+                          <span class="home-pill">Hierarchical Schematic</span>
                         </div>
+                        <button class="home-row-btn">Open →</button>
                       </div>
 
-                      <div class="home-template-card" id="card-tmpl-rpi" title="Create Raspberry Pi HAT 65x56mm board">
-                        <div class="home-template-header">
-                          <span style="font-size:18px;">🍓</span>
+                      <!-- Project 2: CM5 Carrier Board -->
+                      <div class="home-project-row" id="card-proj-cm5" title="Open CM5 Carrier Board">
+                        <div class="home-row-main">
+                          <div class="home-row-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8"><rect x="2" y="2" width="20" height="20" rx="3"></rect><circle cx="12" cy="12" r="3"></circle><path d="M12 2v4M12 18v4M2 12h4M18 12h4"></path></svg>
+                          </div>
                           <div>
-                            <div class="home-template-name">Raspberry Pi HAT</div>
-                            <span class="home-tag home-tag-blue">65 × 56 mm</span>
+                            <div class="home-row-name">CM5 Carrier Board</div>
+                            <div class="home-row-file">samples/cm5_minima/CM5_MINIMA_3.kicad_pcb</div>
                           </div>
                         </div>
-                        <div class="home-template-desc">
-                          Official Pi 4/5 HAT standard form factor with 2.75mm mounting holes and a 40-pin GPIO connector footprint pre-placed.
+                        <div class="home-row-meta">
+                          <span class="home-pill">4-Layer Stackup</span>
+                          <span class="home-pill">Compute Module 5</span>
                         </div>
+                        <button class="home-row-btn">Open →</button>
                       </div>
 
-                      <div class="home-template-card" id="card-tmpl-iot" title="Create compact IoT sensor 50x40mm board">
-                        <div class="home-template-header">
-                          <span style="font-size:18px;">📡</span>
-                          <div>
-                            <div class="home-template-name">IoT Micro Sensor</div>
-                            <span class="home-tag home-tag-purple">50 × 40 mm</span>
-                          </div>
+                      <div id="home-custom-projects-container"></div>
+                    </div>
+                  </div>
+
+                  <!-- Standard Templates Section -->
+                  <div class="home-section">
+                    <div class="home-section-header">
+                      <span class="home-section-title">New Board Templates</span>
+                    </div>
+                    <div class="home-templates-grid">
+                      <div class="home-tmpl-box" id="card-tmpl-blank" title="Create 2-layer 100x80mm board">
+                        <div class="home-tmpl-top">
+                          <span class="home-tmpl-title">Blank 2-Layer</span>
+                          <span class="home-pill">100 × 80 mm</span>
                         </div>
-                        <div class="home-template-desc">
-                          Compact dual-layer outline ideal for ESP32, nRF52, BLE beacons, and wearable sensor modules.
-                        </div>
+                        <div class="home-tmpl-desc">Standard rectangular outline with M3 corner mounting holes.</div>
                       </div>
 
-                      <div class="home-template-card" id="card-tmpl-eurocard" title="Create industrial Eurocard 160x100mm board">
-                        <div class="home-template-header">
-                          <span style="font-size:18px;">🎛</span>
-                          <div>
-                            <div class="home-template-name">Eurocard 3U</div>
-                            <span class="home-tag home-tag-green">160 × 100 mm</span>
-                          </div>
+                      <div class="home-tmpl-box" id="card-tmpl-rpi" title="Create Raspberry Pi HAT board">
+                        <div class="home-tmpl-top">
+                          <span class="home-tmpl-title">Raspberry Pi HAT</span>
+                          <span class="home-pill">65 × 56 mm</span>
                         </div>
-                        <div class="home-template-desc">
-                          Standard 3U 19-inch subrack enclosure Eurocard format for modular industrial control and instrumentation.
+                        <div class="home-tmpl-desc">Official Pi 4/5 HAT standard form factor with 40-pin GPIO.</div>
+                      </div>
+
+                      <div class="home-tmpl-box" id="card-tmpl-iot" title="Create IoT sensor board">
+                        <div class="home-tmpl-top">
+                          <span class="home-tmpl-title">Compact Sensor</span>
+                          <span class="home-pill">50 × 40 mm</span>
                         </div>
+                        <div class="home-tmpl-desc">Compact dual-layer outline for MCU and BLE modules.</div>
+                      </div>
+
+                      <div class="home-tmpl-box" id="card-tmpl-eurocard" title="Create industrial Eurocard 3U board">
+                        <div class="home-tmpl-top">
+                          <span class="home-tmpl-title">Eurocard 3U</span>
+                          <span class="home-pill">160 × 100 mm</span>
+                        </div>
+                        <div class="home-tmpl-desc">Standard 3U 19-inch subrack enclosure format.</div>
                       </div>
                     </div>
                   </div>
 
-                  <!-- Open Projects & Sample Boards Section -->
-                  <div>
-                    <div class="home-section-header">
-                      <div class="home-section-title">
-                        <span>📁</span>
-                        <span>Sample &amp; Showcase Projects</span>
-                      </div>
-                    </div>
-                    <div class="home-grid">
-                      <!-- Project Card 1: CM5 Minima Baseboard -->
-                      <div class="home-card" id="card-proj-cm5" title="Click to open Raspberry Pi CM5 Minima Baseboard">
-                        <div>
-                          <div class="home-card-header">
-                            <div class="home-card-icon" style="color:#7ee787;background:#142d1f;border-color:#238636;">
-                              <span>🖥</span>
-                            </div>
-                            <div style="flex:1;">
-                              <div class="home-card-name">Raspberry Pi CM5 Minima</div>
-                              <div class="home-card-desc">
-                                High-density 4-Layer carrier board for Raspberry Pi Compute Module 5 with PCIe, USB-C, dual HDMI, and fine-pitch BGA/SMD connectors.
-                              </div>
-                            </div>
-                          </div>
-                          <div class="home-card-tags" style="margin-top:10px;">
-                            <span class="home-tag home-tag-blue">4-Layer Stackup</span>
-                            <span class="home-tag">1,500+ Pads</span>
-                            <span class="home-tag">40k+ Zone Vertices</span>
-                            <span class="home-tag home-tag-green">DRC Verified</span>
-                          </div>
-                        </div>
-                        <div class="home-card-footer">
-                          <span style="font-size:11px;color:#8b949e;">CM5_MINIMA_3.kicad_pcb</span>
-                          <button class="cad-btn" style="background:#1d4ed8;border-color:#3b82f6;color:#ffffff;font-weight:700;">Open in Editor →</button>
-                        </div>
-                      </div>
-
-                      <!-- Project Card 2: Complex Hierarchy Audio Amp -->
-                      <div class="home-card" id="card-proj-complex" title="Click to open Complex Hierarchy Audio Power Amp">
-                        <div>
-                          <div class="home-card-header">
-                            <div class="home-card-icon" style="color:#79b8ff;background:#152238;border-color:#1f6feb;">
-                              <span>🔊</span>
-                            </div>
-                            <div style="flex:1;">
-                              <div class="home-card-name">Audio Power Amp (Complex Hierarchy)</div>
-                              <div class="home-card-desc">
-                                Dual-channel high-voltage analog audio amplifier board with hierarchical multi-sheet schematics and visual revision diff.
-                              </div>
-                            </div>
-                          </div>
-                          <div class="home-card-tags" style="margin-top:10px;">
-                            <span class="home-tag home-tag-blue">2-Layer Copper</span>
-                            <span class="home-tag">Multi-Sheet Schematic</span>
-                            <span class="home-tag home-tag-purple">Layer Diff Rev A/B</span>
-                          </div>
-                        </div>
-                        <div class="home-card-footer">
-                          <span style="font-size:11px;color:#8b949e;">complex_hierarchy.kicad_pcb</span>
-                          <button class="cad-btn" style="background:#1d4ed8;border-color:#3b82f6;color:#ffffff;font-weight:700;">Open in Editor →</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -3555,8 +3508,20 @@ fn bind_keyboard_shortcuts(doc: &Document, state: Rc<RefCell<AppController>>) {
             return;
         }
 
+        if key == "Home" || (e.alt_key() && (key == "h" || key == "H")) {
+            e.prevent_default();
+            drop(app);
+            switch_view_tab(&state, "home");
+            return;
+        }
+
         match key.as_str() {
             "Escape" => {
+                if app.active_tab == "home" {
+                    drop(app);
+                    switch_view_tab(&state, "pcb");
+                    return;
+                }
                 if !app.poly_points_mm.is_empty() {
                     app.poly_points_mm.clear();
                     app.draw_all();
@@ -3935,6 +3900,9 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
                     let _ = link.set_attribute("href", href);
                 }
                 fetch_project_boards(st.clone(), &proj);
+                if st.borrow().active_tab == "home" {
+                    switch_view_tab(&st, "pcb");
+                }
             }
         }) as Box<dyn FnMut(_)>);
         let _ = sel.add_event_listener_with_callback("change", cb.as_ref().unchecked_ref());
@@ -4964,6 +4932,47 @@ pub fn load_kicad_pcb_string(state: &Rc<RefCell<AppController>>, content: &str, 
         }
         app.draw_all();
         app.update_telemetry_hud();
+
+        // Register custom project in topbar project selector
+        if let Some(sel) = app
+            .doc
+            .get_element_by_id("rust-project-select")
+            .and_then(|e| e.dyn_into::<HtmlSelectElement>().ok())
+        {
+            let current_val = sel.value();
+            if current_val != project_name {
+                if let Ok(opt) = app.doc.create_element("option") {
+                    let _ = opt.set_attribute("value", project_name);
+                    opt.set_text_content(Some(project_name));
+                    let _ = sel.append_child(&opt);
+                }
+                sel.set_value(project_name);
+            }
+        }
+
+        // Add to home projects list
+        if let Some(container) = app.doc.get_element_by_id("home-custom-projects-container") {
+            let row_html = format!(
+                r##"<div class="home-project-row" title="Open {name}">
+                     <div class="home-row-main">
+                       <div class="home-row-icon">
+                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                       </div>
+                       <div>
+                         <div class="home-row-name">{name}</div>
+                         <div class="home-row-file">Loaded KiCad PCB Board</div>
+                       </div>
+                     </div>
+                     <div class="home-row-meta">
+                       <span class="home-pill">Custom Board</span>
+                       <span class="home-pill" style="color:#4ade80;">Active</span>
+                     </div>
+                     <button class="home-row-btn">Open →</button>
+                   </div>"##,
+                name = project_name
+            );
+            container.set_inner_html(&row_html);
+        }
     }
     run_live_drc(state);
     switch_view_tab(state, "pcb");
@@ -4991,6 +5000,18 @@ fn read_file_as_pcb(state: Rc<RefCell<AppController>>, file: web_sys::File) {
 }
 
 pub fn setup_home_and_project_hub(doc: &Document, state: Rc<RefCell<AppController>>) {
+    // Return to Projects Home (Brand Logo click or Topbar Home button)
+    for btn_id in ["brand-home-link", "btn-topbar-home"] {
+        if let Some(btn) = doc.get_element_by_id(btn_id) {
+            let st = state.clone();
+            let cb = Closure::wrap(Box::new(move |_e: web_sys::Event| {
+                switch_view_tab(&st, "home");
+            }) as Box<dyn FnMut(_)>);
+            let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+            cb.forget();
+        }
+    }
+
     // 1. Open New Project Modal buttons
     for btn_id in ["btn-home-new-proj", "btn-topbar-new"] {
         if let Some(btn) = doc.get_element_by_id(btn_id) {
