@@ -719,3 +719,308 @@ input[type="checkbox"], input[type="radio"] {
   border-color: #388bfd;
 }
 
+/* ==========================================================================
+   Home Screen & Project Manager Hub Styles
+   ========================================================================== */
+.home-view-panel {
+  position: absolute;
+  inset: 0;
+  background: #0d1117;
+  z-index: 35;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-container {
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 32px 24px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.home-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 26px 30px;
+  background: linear-gradient(135deg, #171c26 0%, #10141d 100%);
+  border: 1px solid #283245;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.home-hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.home-hero-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #f0f6fc;
+  letter-spacing: -0.02em;
+}
+
+.home-hero-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  background: rgba(56, 139, 253, 0.15);
+  color: #58a6ff;
+  border: 1px solid rgba(56, 139, 253, 0.35);
+  border-radius: 12px;
+  padding: 2px 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.home-hero-sub {
+  font-size: 12.5px;
+  color: #8b949e;
+  max-width: 560px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+.home-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.home-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #238636;
+  color: #ffffff;
+  border: 1px solid rgba(240, 246, 252, 0.1);
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(35, 134, 54, 0.35);
+  transition: all 0.15s ease;
+}
+.home-btn-primary:hover {
+  background: #2ea043;
+  box-shadow: 0 4px 14px rgba(46, 160, 67, 0.5);
+}
+
+.home-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #21262d;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.home-btn-secondary:hover {
+  background: #30363d;
+  border-color: #8b949e;
+  color: #ffffff;
+}
+
+.home-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.home-section-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #c9d1d9;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: uppercase;
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.home-grid-templates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.home-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.home-card:hover {
+  border-color: #58a6ff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.home-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.home-card-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #21262d;
+  border: 1px solid #30363d;
+  flex-shrink: 0;
+  font-size: 18px;
+}
+
+.home-card-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f0f6fc;
+}
+
+.home-card-desc {
+  font-size: 11.5px;
+  color: #8b949e;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.home-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.home-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #21262d;
+  color: #8b949e;
+  border: 1px solid #30363d;
+}
+.home-tag-blue {
+  background: rgba(56, 139, 253, 0.1);
+  color: #79b8ff;
+  border-color: rgba(56, 139, 253, 0.25);
+}
+.home-tag-green {
+  background: rgba(46, 160, 67, 0.1);
+  color: #7ee787;
+  border-color: rgba(46, 160, 67, 0.25);
+}
+.home-tag-purple {
+  background: rgba(187, 134, 252, 0.1);
+  color: #d2a8ff;
+  border-color: rgba(187, 134, 252, 0.25);
+}
+
+.home-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid #21262d;
+  padding-top: 12px;
+  margin-top: 2px;
+}
+
+.home-template-card {
+  background: #141820;
+  border: 1px solid #28303f;
+  border-radius: 7px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.home-template-card:hover {
+  border-color: #388bfd;
+  background: #19202b;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.home-template-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.home-template-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f0f6fc;
+}
+
+.home-template-desc {
+  font-size: 11px;
+  color: #8b949e;
+  line-height: 1.4;
+}
+
+.home-dropzone {
+  border: 2px dashed #30363d;
+  border-radius: 8px;
+  padding: 26px 20px;
+  text-align: center;
+  background: rgba(22, 27, 34, 0.4);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.home-dropzone:hover, .home-dropzone.dragover {
+  border-color: #58a6ff;
+  background: rgba(56, 139, 253, 0.06);
+}
+
+.home-dropzone-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #21262d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #58a6ff;
+  font-size: 20px;
+}
+
+

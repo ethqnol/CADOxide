@@ -10,11 +10,12 @@ use footprint_library::{get_standard_ipc_library, FootprintDefinition};
 use gl_renderer::RustGpuRenderer;
 use overlay_renderer::{render_cad_overlay, OverlayConfig};
 use parser::{
-    compute_vector_diff_boards, generate_hdi_stress_board, parse_kicad_pcb_str, push_raw,
-    BoardText, CadDimension, CopperZone, ParsedBoard, LAYER_B_CRTYD, LAYER_B_CU, LAYER_B_FAB,
-    LAYER_B_MASK, LAYER_B_PASTE, LAYER_B_SILKS, LAYER_DRC_MARKER, LAYER_EDGE_CUTS, LAYER_F_CRTYD,
-    LAYER_F_CU, LAYER_F_FAB, LAYER_F_MASK, LAYER_F_PASTE, LAYER_F_SILKS, LAYER_IN1_CU,
-    LAYER_IN2_CU, LAYER_MARGIN, LAYER_REVIEW_PIN, LAYER_USER_CMTS, LAYER_USER_DWGS,
+    compute_vector_diff_boards, generate_hdi_stress_board, generate_template_kicad_pcb,
+    parse_kicad_pcb_str, push_raw, BoardText, CadDimension, CopperZone, ParsedBoard,
+    LAYER_B_CRTYD, LAYER_B_CU, LAYER_B_FAB, LAYER_B_MASK, LAYER_B_PASTE, LAYER_B_SILKS,
+    LAYER_DRC_MARKER, LAYER_EDGE_CUTS, LAYER_F_CRTYD, LAYER_F_CU, LAYER_F_FAB, LAYER_F_MASK,
+    LAYER_F_PASTE, LAYER_F_SILKS, LAYER_IN1_CU, LAYER_IN2_CU, LAYER_MARGIN, LAYER_REVIEW_PIN,
+    LAYER_USER_CMTS, LAYER_USER_DWGS,
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -24,8 +25,9 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    Document, Element, Event, HtmlCanvasElement, HtmlElement, HtmlInputElement, HtmlSelectElement,
-    KeyboardEvent, MouseEvent, WheelEvent,
+    Document, Element, Event,
+    HtmlCanvasElement, HtmlElement, HtmlInputElement, HtmlSelectElement, KeyboardEvent,
+    MouseEvent, WheelEvent,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -82,9 +84,10 @@ pub struct PartLibraryEntry {
 pub struct AppController {
     pub doc: Document,
     pub renderer: Option<RustGpuRenderer>,
-    pub active_tab: String,    // "pcb" | "schematic" | "diff" | "drc" | "parts"
+    pub active_tab: String,    // "home" | "pcb" | "schematic" | "diff" | "drc" | "parts"
     pub appear_subtab: String, // "layers" | "objects" | "nets"
     pub active_project: String,
+    pub project_name: String,
     pub board_rev_a: ParsedBoard,
     pub board_rev_b: ParsedBoard,
     pub board_diff: ParsedBoard,
@@ -1247,9 +1250,10 @@ pub fn start_cadoxide_app() {
     let state = Rc::new(RefCell::new(AppController {
         doc: doc.clone(),
         renderer: None,
-        active_tab: "pcb".to_string(),
+        active_tab: "home".to_string(),
         appear_subtab: "layers".to_string(),
         active_project: "complex_hierarchy".to_string(),
+        project_name: "complex_hierarchy".to_string(),
         board_rev_a: empty_board.clone(),
         board_rev_b: empty_board.clone(),
         board_diff: empty_board.clone(),
@@ -1313,7 +1317,8 @@ pub fn start_cadoxide_app() {
 
     build_shell_dom(&doc, &root, state.clone());
     fetch_project_boards(state.clone(), "complex_hierarchy");
-    sync_backend_parts(state);
+    sync_backend_parts(state.clone());
+    switch_view_tab(&state, "home");
 }
 
 fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppController>>) {
@@ -1345,7 +1350,8 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
 
             <!-- Center Workspace Mode Tabs -->
             <div class="cad-tabs">
-              <button id="tab-pcb" class="cad-tab cad-tab-active">PCB Editor</button>
+              <button id="tab-home" class="cad-tab cad-tab-active">⌂ Home</button>
+              <button id="tab-pcb" class="cad-tab">PCB Editor</button>
               <button id="tab-schematic" class="cad-tab">Schematic Editor</button>
               <button id="tab-diff" class="cad-tab">Layer Diff</button>
               <button id="tab-drc" class="cad-tab">DRC (<span id="drc-count-badge">69</span>)</button>
@@ -1354,6 +1360,9 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
 
             <!-- Right Project Selector & Quick Fabrication Package Actions -->
             <div class="cad-menubar-group">
+              <button id="btn-topbar-new" class="cad-btn" style="background:#1c3826;border-color:#2e7d32;color:#86efac;font-weight:600;" title="Start a new PCB project from template">+ New</button>
+              <button id="btn-topbar-open" class="cad-btn" style="background:#1f2937;border-color:#374151;color:#e5e7eb;" title="Open .kicad_pcb file from computer">📂 Open...</button>
+              <div class="cad-divider-v"></div>
               <a id="btn-export-pcb" href="#" download="edited_board.kicad_pcb" class="cad-btn" title="Save / Download .kicad_pcb">💾 Save</a>
               <a id="btn-export-gerbers" href="#" class="cad-btn" style="background:#142d1f;border-color:#2e7d32;color:#86efac;font-weight:700;" title="Generate &amp; Download Complete RS-274X Gerber &amp; NC Drill Fabrication ZIP">📦 Gerbers</a>
               <button id="btn-open-fp-browser" class="cad-btn" style="background:#162436;border-color:#388bfd;color:#79b8ff;font-weight:600;" title="Browse IPC-7351 Standard Component Footprints (A)">🖵 Footprint (A)</button>
@@ -1362,7 +1371,6 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
                 <option value="complex_hierarchy">complex_hierarchy.kicad_pcb</option>
                 <option value="cm5_minima">CM5_MINIMA_3.kicad_pcb</option>
               </select>
-              <button id="btn-100k-hdi" class="cad-btn" title="Generate 100,000-primitive synthetic HDI stress board">HDI-100K</button>
             </div>
           </div>
 
@@ -1456,7 +1464,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
           <!-- Main CAD Workspace (Left View Options Strip + Center Canvas + Right Routing/Drawing Strip + Right Appearance Dock) -->
           <div class="cad-workspace">
             <!-- Left Vertical Strip: KiCad Display & Viewing Options -->
-            <aside class="cad-toolstrip" title="KiCad Display & Viewing Options">
+            <aside id="cad-left-strip" class="cad-toolstrip" title="KiCad Display & Viewing Options">
               <button id="btn-opt-grid" class="cad-tool-btn cad-tool-btn-active" title="Show/Hide Grid">#</button>
               <button id="btn-opt-polar" class="cad-tool-btn" title="Toggle Polar Coordinates (R / θ)">∠</button>
               <div class="cad-tool-sep"></div>
@@ -1482,6 +1490,189 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
             <div id="center-viewport" class="cad-viewport">
               <canvas id="rust-gpu-canvas" class="cad-canvas"></canvas>
               <canvas id="cad-overlay-canvas" class="cad-overlay-canvas"></canvas>
+
+              <!-- Home Screen / Project Manager Hub View -->
+              <div id="home-view-panel" class="home-view-panel">
+                <div class="home-container">
+                  <!-- Hero Banner -->
+                  <div class="home-hero">
+                    <div class="home-hero-left">
+                      <div class="home-hero-title">
+                        <svg width="22" height="22" viewBox="0 0 16 16" fill="none">
+                          <rect x="1" y="1" width="14" height="14" rx="2.5" stroke="#ef4444" stroke-width="1.6"/>
+                          <circle cx="5" cy="5" r="1.5" fill="#60a5fa"/>
+                          <circle cx="11" cy="11" r="1.5" fill="#60a5fa"/>
+                          <path d="M5 5L8 8H11V11" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                        <span>CADOxide EDA Studio</span>
+                        <span class="home-hero-badge">KiCad 8+ Compatible</span>
+                      </div>
+                      <div class="home-hero-sub">
+                        Fast, Rust &amp; WebGL2-powered printed circuit board workstation. Start a new board from industry-standard templates, open existing KiCad projects, or drag and drop any .kicad_pcb file directly from your computer.
+                      </div>
+                    </div>
+                    <div class="home-hero-actions">
+                      <button id="btn-home-new-proj" class="home-btn-primary" title="Start a new PCB project from template">
+                        <span>+</span>
+                        <span>New Project</span>
+                      </button>
+                      <button id="btn-home-open-file" class="home-btn-secondary" title="Open .kicad_pcb file from your computer">
+                        <span>📂</span>
+                        <span>Open File...</span>
+                      </button>
+                      <button id="btn-home-return-editor" class="home-btn-secondary" title="Return to active PCB editor workspace">
+                        <span>⚡</span>
+                        <span>PCB Editor →</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Drag & Drop Zone -->
+                  <div id="home-dropzone" class="home-dropzone" title="Click or drop a .kicad_pcb file here to open">
+                    <div class="home-dropzone-icon">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                      </svg>
+                    </div>
+                    <div style="font-size:13.5px;font-weight:700;color:#f0f6fc;">
+                      Drag &amp; drop any <span style="color:#58a6ff;">.kicad_pcb</span> file here
+                    </div>
+                    <div style="font-size:11.5px;color:#8b949e;">
+                      or click to browse local files — instant zero-upload Rust WebAssembly parsing
+                    </div>
+                    <input type="file" id="home-file-input" accept=".kicad_pcb" style="display:none;" />
+                  </div>
+
+                  <!-- Quick Start Templates Section -->
+                  <div>
+                    <div class="home-section-header">
+                      <div class="home-section-title">
+                        <span>⚡</span>
+                        <span>Start New Project From Template</span>
+                      </div>
+                    </div>
+                    <div class="home-grid-templates">
+                      <div class="home-template-card" id="card-tmpl-blank" title="Create standard 2-layer 100x80mm board">
+                        <div class="home-template-header">
+                          <span style="font-size:18px;">▭</span>
+                          <div>
+                            <div class="home-template-name">Blank 2-Layer Board</div>
+                            <span class="home-tag home-tag-green">100 × 80 mm</span>
+                          </div>
+                        </div>
+                        <div class="home-template-desc">
+                          Standard rectangular outline with M3 corner mounting holes and preconfigured GND / +3V3 / +5V power nets.
+                        </div>
+                      </div>
+
+                      <div class="home-template-card" id="card-tmpl-rpi" title="Create Raspberry Pi HAT 65x56mm board">
+                        <div class="home-template-header">
+                          <span style="font-size:18px;">🍓</span>
+                          <div>
+                            <div class="home-template-name">Raspberry Pi HAT</div>
+                            <span class="home-tag home-tag-blue">65 × 56 mm</span>
+                          </div>
+                        </div>
+                        <div class="home-template-desc">
+                          Official Pi 4/5 HAT standard form factor with 2.75mm mounting holes and a 40-pin GPIO connector footprint pre-placed.
+                        </div>
+                      </div>
+
+                      <div class="home-template-card" id="card-tmpl-iot" title="Create compact IoT sensor 50x40mm board">
+                        <div class="home-template-header">
+                          <span style="font-size:18px;">📡</span>
+                          <div>
+                            <div class="home-template-name">IoT Micro Sensor</div>
+                            <span class="home-tag home-tag-purple">50 × 40 mm</span>
+                          </div>
+                        </div>
+                        <div class="home-template-desc">
+                          Compact dual-layer outline ideal for ESP32, nRF52, BLE beacons, and wearable sensor modules.
+                        </div>
+                      </div>
+
+                      <div class="home-template-card" id="card-tmpl-eurocard" title="Create industrial Eurocard 160x100mm board">
+                        <div class="home-template-header">
+                          <span style="font-size:18px;">🎛</span>
+                          <div>
+                            <div class="home-template-name">Eurocard 3U</div>
+                            <span class="home-tag home-tag-green">160 × 100 mm</span>
+                          </div>
+                        </div>
+                        <div class="home-template-desc">
+                          Standard 3U 19-inch subrack enclosure Eurocard format for modular industrial control and instrumentation.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Open Projects & Sample Boards Section -->
+                  <div>
+                    <div class="home-section-header">
+                      <div class="home-section-title">
+                        <span>📁</span>
+                        <span>Sample &amp; Showcase Projects</span>
+                      </div>
+                    </div>
+                    <div class="home-grid">
+                      <!-- Project Card 1: CM5 Minima Baseboard -->
+                      <div class="home-card" id="card-proj-cm5" title="Click to open Raspberry Pi CM5 Minima Baseboard">
+                        <div>
+                          <div class="home-card-header">
+                            <div class="home-card-icon" style="color:#7ee787;background:#142d1f;border-color:#238636;">
+                              <span>🖥</span>
+                            </div>
+                            <div style="flex:1;">
+                              <div class="home-card-name">Raspberry Pi CM5 Minima</div>
+                              <div class="home-card-desc">
+                                High-density 4-Layer carrier board for Raspberry Pi Compute Module 5 with PCIe, USB-C, dual HDMI, and fine-pitch BGA/SMD connectors.
+                              </div>
+                            </div>
+                          </div>
+                          <div class="home-card-tags" style="margin-top:10px;">
+                            <span class="home-tag home-tag-blue">4-Layer Stackup</span>
+                            <span class="home-tag">1,500+ Pads</span>
+                            <span class="home-tag">40k+ Zone Vertices</span>
+                            <span class="home-tag home-tag-green">DRC Verified</span>
+                          </div>
+                        </div>
+                        <div class="home-card-footer">
+                          <span style="font-size:11px;color:#8b949e;">CM5_MINIMA_3.kicad_pcb</span>
+                          <button class="cad-btn" style="background:#1d4ed8;border-color:#3b82f6;color:#ffffff;font-weight:700;">Open in Editor →</button>
+                        </div>
+                      </div>
+
+                      <!-- Project Card 2: Complex Hierarchy Audio Amp -->
+                      <div class="home-card" id="card-proj-complex" title="Click to open Complex Hierarchy Audio Power Amp">
+                        <div>
+                          <div class="home-card-header">
+                            <div class="home-card-icon" style="color:#79b8ff;background:#152238;border-color:#1f6feb;">
+                              <span>🔊</span>
+                            </div>
+                            <div style="flex:1;">
+                              <div class="home-card-name">Audio Power Amp (Complex Hierarchy)</div>
+                              <div class="home-card-desc">
+                                Dual-channel high-voltage analog audio amplifier board with hierarchical multi-sheet schematics and visual revision diff.
+                              </div>
+                            </div>
+                          </div>
+                          <div class="home-card-tags" style="margin-top:10px;">
+                            <span class="home-tag home-tag-blue">2-Layer Copper</span>
+                            <span class="home-tag">Multi-Sheet Schematic</span>
+                            <span class="home-tag home-tag-purple">Layer Diff Rev A/B</span>
+                          </div>
+                        </div>
+                        <div class="home-card-footer">
+                          <span style="font-size:11px;color:#8b949e;">complex_hierarchy.kicad_pcb</span>
+                          <button class="cad-btn" style="background:#1d4ed8;border-color:#3b82f6;color:#ffffff;font-weight:700;">Open in Editor →</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <!-- Interactive Pan & Wheel-Zoom Schematic Editor View -->
               <div id="schematic-view-panel" class="hidden" style="position:absolute;inset:0;display:flex;flex-direction:column;background:#0e1013;z-index:30;">
@@ -1538,7 +1729,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
             </div>
 
             <!-- Right Vertical Strip: KiCad Interactive CAD Routing, Placement & Drawing Tools (Docked left of Appearance Panel) -->
-            <aside class="cad-toolstrip-right" title="KiCad Routing, Placement & Drawing Tools">
+            <aside id="cad-right-toolstrip" class="cad-toolstrip-right" title="KiCad Routing, Placement & Drawing Tools">
               <button id="btn-tool-select" class="cad-tool-btn cad-tool-btn-active" title="Select item(s) (S)">
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2L13 7.5L8.5 9L7 13.5L3 2Z"/></svg>
               </button>
@@ -1570,7 +1761,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
             </aside>
 
             <!-- Right Docked KiCad Appearance Manager, Layer Display Options, Selection Filter & Inspector -->
-            <aside class="cad-sidebar">
+            <aside id="cad-right-sidebar" class="cad-sidebar">
               <div class="cad-panel-header">
                 <span>Appearance</span>
                 <span style="color:#79b8ff;font-weight:500;">KiCad Stack</span>
@@ -1785,6 +1976,52 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               </div>
             </div>
           </div>
+
+          <!-- New Project Dialog Modal -->
+          <div id="modal-new-project" class="cad-modal-backdrop hidden">
+            <div class="cad-modal-window" style="width:520px;max-width:92vw;">
+              <div class="cad-modal-header">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:18px;">✨</span>
+                  <span style="font-weight:700;">Create New PCB Project</span>
+                </div>
+                <button id="btn-close-new-proj-modal" class="cad-btn" style="padding:2px 8px;font-size:14px;">✕</button>
+              </div>
+              <div class="cad-modal-body" style="flex-direction:column;padding:18px;gap:14px;background:#13151b;">
+                <div>
+                  <label style="display:block;font-size:11px;font-weight:700;color:#8b949e;text-transform:uppercase;margin-bottom:6px;">Project Name</label>
+                  <input id="input-new-proj-name" type="text" value="New_PCB_Project" class="cad-input" style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 10px;" />
+                </div>
+                <div>
+                  <label style="display:block;font-size:11px;font-weight:700;color:#8b949e;text-transform:uppercase;margin-bottom:6px;">Starting Template / Form Factor</label>
+                  <select id="select-new-proj-template" class="cad-select" style="width:100%;box-sizing:border-box;font-size:12.5px;padding:6px 10px;">
+                    <option value="blank">Blank 2-Layer Board (100 × 80 mm)</option>
+                    <option value="rpi_hat">Raspberry Pi HAT (65 × 56 mm with 40-pin GPIO)</option>
+                    <option value="iot_sensor">IoT Micro Sensor (50 × 40 mm)</option>
+                    <option value="eurocard">Eurocard 3U (160 × 100 mm)</option>
+                    <option value="custom">Custom Dimensions...</option>
+                  </select>
+                </div>
+                <div id="row-custom-dims" class="hidden" style="display:flex;gap:12px;background:#1a1d26;padding:10px 12px;border-radius:6px;border:1px solid #282d3c;">
+                  <div style="flex:1;">
+                    <label style="display:block;font-size:10.5px;color:#8b949e;margin-bottom:4px;">Width (mm)</label>
+                    <input id="input-new-proj-width" type="number" step="1.0" min="10.0" max="1000.0" value="100.0" class="cad-input" style="width:100%;box-sizing:border-box;" />
+                  </div>
+                  <div style="flex:1;">
+                    <label style="display:block;font-size:10.5px;color:#8b949e;margin-bottom:4px;">Height (mm)</label>
+                    <input id="input-new-proj-height" type="number" step="1.0" min="10.0" max="1000.0" value="80.0" class="cad-input" style="width:100%;box-sizing:border-box;" />
+                  </div>
+                </div>
+                <div style="font-size:11.5px;color:#6e7681;line-height:1.5;background:#11141a;padding:10px;border-radius:4px;border:1px dashed #21262d;">
+                  Generates an industry-standard KiCad v8+ .kicad_pcb layout with Edge.Cuts board outline, corner mounting holes, and copper power nets ready for layout.
+                </div>
+              </div>
+              <div class="cad-modal-footer">
+                <button id="btn-cancel-new-proj-modal" class="cad-btn">Cancel</button>
+                <button id="btn-confirm-create-proj" class="cad-btn" style="background:#238636;border-color:#2ea043;color:#ffffff;font-weight:700;">Create Project →</button>
+              </div>
+            </div>
+          </div>
         </div>
         "##,
     );
@@ -1802,6 +2039,7 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
     bind_kicad_display_and_appearance(doc, state.clone());
     bind_schematic_interactions(doc, state.clone());
     bind_keyboard_shortcuts(doc, state.clone());
+    setup_home_and_project_hub(doc, state.clone());
     state.borrow().render_inspector_panel();
     render_parts_list(&state);
 }
@@ -3449,26 +3687,6 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
         cb.forget();
     }
 
-    // 100k HDI Stress Test Button
-    if let Some(btn) = doc.get_element_by_id("btn-100k-hdi") {
-        let st = state.clone();
-        let cb = Closure::wrap(Box::new(move |_e: Event| {
-            let t0 = js_sys::Date::now();
-            let hdi_board = generate_hdi_stress_board(100_000);
-            let dt = js_sys::Date::now() - t0;
-            {
-                let mut app = st.borrow_mut();
-                app.current_board = hdi_board;
-                app.parse_time_ms = dt;
-                app.selected_primitive_idx = None;
-                app.populate_net_selector();
-                app.select_net_probe(0);
-            }
-            switch_view_tab(&st, "pcb");
-        }) as Box<dyn FnMut(_)>);
-        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
-        cb.forget();
-    }
 
     // Zoom In / Out / Fit
     if let Some(btn) = doc.get_element_by_id("btn-zoom-in") {
@@ -3523,6 +3741,7 @@ fn bind_toolbar_and_tabs(doc: &Document, state: Rc<RefCell<AppController>>) {
 
     // View Mode Tabs
     for (tab_id, mode_name) in [
+        ("tab-home", "home"),
         ("tab-pcb", "pcb"),
         ("tab-schematic", "schematic"),
         ("tab-diff", "diff"),
@@ -3837,6 +4056,7 @@ pub fn switch_view_tab(state: &Rc<RefCell<AppController>>, mode: &str) {
     app.active_tab = mode.to_string();
 
     for (tid, m) in [
+        ("tab-home", "home"),
         ("tab-pcb", "pcb"),
         ("tab-schematic", "schematic"),
         ("tab-diff", "diff"),
@@ -3861,6 +4081,7 @@ pub fn switch_view_tab(state: &Rc<RefCell<AppController>>, mode: &str) {
     }
 
     for (panel_id, target_mode) in [
+        ("home-view-panel", "home"),
         ("schematic-view-panel", "schematic"),
         ("drc-view-panel", "drc"),
         ("parts-view-panel", "parts"),
@@ -3870,6 +4091,22 @@ pub fn switch_view_tab(state: &Rc<RefCell<AppController>>, mode: &str) {
                 let _ = panel.class_list().remove_1("hidden");
             } else {
                 let _ = panel.class_list().add_1("hidden");
+            }
+        }
+    }
+
+    // Toggle editor chrome: when in "home" mode, hide parameter bar, left toolstrip, right toolstrip, and right sidebar
+    for editor_elem_id in [
+        "cad-param-bar",
+        "cad-left-strip",
+        "cad-right-toolstrip",
+        "cad-right-sidebar",
+    ] {
+        if let Some(el) = app.doc.get_element_by_id(editor_elem_id) {
+            if mode == "home" {
+                let _ = el.class_list().add_1("hidden");
+            } else {
+                let _ = el.class_list().remove_1("hidden");
             }
         }
     }
@@ -3960,6 +4197,7 @@ fn sync_backend_parts(state: Rc<RefCell<AppController>>) {
 }
 
 fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
+    let proj_id_saved = project_id.to_string();
     let (url_a, url_b, drc_url) = if project_id == "cm5_minima" {
         (
             "/samples/cm5_minima/CM5_MINIMA_3.kicad_pcb",
@@ -3976,6 +4214,7 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
 
     fetch_text_with_callback(url_a, {
         let st = state.clone();
+        let proj_check = proj_id_saved.clone();
         let url_b_str = url_b.to_string();
         move |text_a| {
             let t0 = js_sys::Date::now();
@@ -3983,6 +4222,10 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
             let dt = js_sys::Date::now() - t0;
             {
                 let mut app = st.borrow_mut();
+                if app.active_project != proj_check {
+                    return;
+                }
+                app.project_name = proj_check.clone();
                 app.rel_origin_mm = (board_a.bounds[0], board_a.bounds[3]);
                 app.board_rev_a = board_a.clone();
                 app.current_board = board_a;
@@ -4351,6 +4594,294 @@ pub fn render_footprint_modal_content(state: &Rc<RefCell<AppController>>) {
         if let Some(hint) = app.doc.get_element_by_id("fp-selected-hint") {
             hint.set_text_content(Some(&format!("Selected: {} ({})", fp.name, fp.category)));
         }
+    }
+}
+
+pub fn load_kicad_pcb_string(state: &Rc<RefCell<AppController>>, content: &str, project_name: &str) {
+    let t0 = js_sys::Date::now();
+    let board = parse_kicad_pcb_str(content);
+    let dt = js_sys::Date::now() - t0;
+    {
+        let mut app = state.borrow_mut();
+        app.project_name = project_name.to_string();
+        app.active_project = "custom".to_string();
+        app.rel_origin_mm = (board.bounds[0], board.bounds[3]);
+        app.board_rev_a = board.clone();
+        app.board_rev_b = board.clone();
+        app.board_diff = board.clone();
+        app.current_board = board;
+        app.undo_stack.clear();
+        app.selected_primitive_idx = None;
+        app.route_start_mm = None;
+        app.poly_points_mm.clear();
+        app.parse_time_ms = dt;
+        app.populate_net_selector();
+        app.select_net_probe(0);
+        app.rebuild_gpu_buffer_with_markers();
+        if let Some(ref mut r) = app.renderer {
+            r.fit_to_board();
+        }
+        app.draw_all();
+        app.update_telemetry_hud();
+    }
+    run_live_drc(state);
+    switch_view_tab(state, "pcb");
+}
+
+fn read_file_as_pcb(state: Rc<RefCell<AppController>>, file: web_sys::File) {
+    let file_name = file.name();
+    let reader = match web_sys::FileReader::new() {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+    let r_clone = reader.clone();
+    let st = state.clone();
+    let name_clone = file_name.clone();
+    let onload = Closure::wrap(Box::new(move |_e: web_sys::Event| {
+        if let Ok(js_val) = r_clone.result() {
+            if let Some(text) = js_val.as_string() {
+                load_kicad_pcb_string(&st, &text, &name_clone);
+            }
+        }
+    }) as Box<dyn FnMut(_)>);
+    reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+    onload.forget();
+    let _ = reader.read_as_text(&file);
+}
+
+pub fn setup_home_and_project_hub(doc: &Document, state: Rc<RefCell<AppController>>) {
+    // 1. Open New Project Modal buttons
+    for btn_id in ["btn-home-new-proj", "btn-topbar-new"] {
+        if let Some(btn) = doc.get_element_by_id(btn_id) {
+            let doc_clone = doc.clone();
+            let cb = Closure::wrap(Box::new(move |_e: web_sys::Event| {
+                if let Some(m) = doc_clone.get_element_by_id("modal-new-project") {
+                    let _ = m.class_list().remove_1("hidden");
+                }
+            }) as Box<dyn FnMut(_)>);
+            let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+            cb.forget();
+        }
+    }
+
+    // Close New Project Modal buttons
+    for btn_id in ["btn-close-new-proj-modal", "btn-cancel-new-proj-modal"] {
+        if let Some(btn) = doc.get_element_by_id(btn_id) {
+            let doc_clone = doc.clone();
+            let cb = Closure::wrap(Box::new(move |_e: web_sys::Event| {
+                if let Some(m) = doc_clone.get_element_by_id("modal-new-project") {
+                    let _ = m.class_list().add_1("hidden");
+                }
+            }) as Box<dyn FnMut(_)>);
+            let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+            cb.forget();
+        }
+    }
+
+    // Template dropdown change: show/hide custom dimensions
+    if let Some(sel) = doc.get_element_by_id("select-new-proj-template") {
+        let doc_clone = doc.clone();
+        let cb = Closure::wrap(Box::new(move |e: web_sys::Event| {
+            if let Some(target) = e.target().and_then(|t| t.dyn_into::<HtmlSelectElement>().ok()) {
+                let is_custom = target.value() == "custom";
+                if let Some(row) = doc_clone.get_element_by_id("row-custom-dims") {
+                    if is_custom {
+                        let _ = row.class_list().remove_1("hidden");
+                    } else {
+                        let _ = row.class_list().add_1("hidden");
+                    }
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = sel.add_event_listener_with_callback("change", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // Confirm Create Project in Modal
+    if let Some(btn) = doc.get_element_by_id("btn-confirm-create-proj") {
+        let st = state.clone();
+        let doc_clone = doc.clone();
+        let cb = Closure::wrap(Box::new(move |_e: web_sys::Event| {
+            let name = doc_clone
+                .get_element_by_id("input-new-proj-name")
+                .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
+                .map(|i| i.value())
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| "New_Project".to_string());
+            let template = doc_clone
+                .get_element_by_id("select-new-proj-template")
+                .and_then(|e| e.dyn_into::<HtmlSelectElement>().ok())
+                .map(|s| s.value())
+                .unwrap_or_else(|| "blank".to_string());
+            let width: f32 = doc_clone
+                .get_element_by_id("input-new-proj-width")
+                .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
+                .and_then(|i| i.value().parse().ok())
+                .unwrap_or(100.0);
+            let height: f32 = doc_clone
+                .get_element_by_id("input-new-proj-height")
+                .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
+                .and_then(|i| i.value().parse().ok())
+                .unwrap_or(80.0);
+
+            let pcb_content = generate_template_kicad_pcb(&template, &name, width, height);
+            if let Some(m) = doc_clone.get_element_by_id("modal-new-project") {
+                let _ = m.class_list().add_1("hidden");
+            }
+            load_kicad_pcb_string(&st, &pcb_content, &name);
+        }) as Box<dyn FnMut(_)>);
+        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // 2. Direct Template Cards
+    let template_cards = [
+        ("card-tmpl-blank", "blank", "Blank_2Layer_Board", 100.0f32, 80.0f32),
+        ("card-tmpl-rpi", "rpi_hat", "Raspberry_Pi_HAT", 65.0, 56.0),
+        ("card-tmpl-iot", "iot_sensor", "IoT_Micro_Sensor", 50.0, 40.0),
+        ("card-tmpl-eurocard", "eurocard", "Eurocard_3U", 160.0, 100.0),
+    ];
+    for (card_id, tmpl, name, w, h) in template_cards {
+        if let Some(card) = doc.get_element_by_id(card_id) {
+            let st = state.clone();
+            let cb = Closure::wrap(Box::new(move |_e: web_sys::Event| {
+                let pcb_content = generate_template_kicad_pcb(tmpl, name, w, h);
+                load_kicad_pcb_string(&st, &pcb_content, name);
+            }) as Box<dyn FnMut(_)>);
+            let _ = card.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+            cb.forget();
+        }
+    }
+
+    // 3. Sample Project Cards
+    if let Some(card) = doc.get_element_by_id("card-proj-cm5") {
+        let st = state.clone();
+        let doc_clone = doc.clone();
+        let cb = Closure::wrap(Box::new(move |_e: web_sys::Event| {
+            {
+                let mut app = st.borrow_mut();
+                if app.active_project != "cm5_minima" {
+                    app.active_project = "cm5_minima".to_string();
+                    drop(app);
+                    fetch_project_boards(st.clone(), "cm5_minima");
+                }
+            }
+            if let Some(sel) = doc_clone.get_element_by_id("rust-project-select").and_then(|e| e.dyn_into::<HtmlSelectElement>().ok()) {
+                sel.set_value("cm5_minima");
+            }
+            switch_view_tab(&st, "pcb");
+        }) as Box<dyn FnMut(_)>);
+        let _ = card.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    if let Some(card) = doc.get_element_by_id("card-proj-complex") {
+        let st = state.clone();
+        let doc_clone = doc.clone();
+        let cb = Closure::wrap(Box::new(move |_e: web_sys::Event| {
+            {
+                let mut app = st.borrow_mut();
+                if app.active_project != "complex_hierarchy" {
+                    app.active_project = "complex_hierarchy".to_string();
+                    drop(app);
+                    fetch_project_boards(st.clone(), "complex_hierarchy");
+                }
+            }
+            if let Some(sel) = doc_clone.get_element_by_id("rust-project-select").and_then(|e| e.dyn_into::<HtmlSelectElement>().ok()) {
+                sel.set_value("complex_hierarchy");
+            }
+            switch_view_tab(&st, "pcb");
+        }) as Box<dyn FnMut(_)>);
+        let _ = card.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // Return to editor button
+    if let Some(btn) = doc.get_element_by_id("btn-home-return-editor") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |_e: web_sys::Event| {
+            switch_view_tab(&st, "pcb");
+        }) as Box<dyn FnMut(_)>);
+        let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // 4. File picker trigger buttons
+    for btn_id in ["btn-home-open-file", "btn-topbar-open"] {
+        if let Some(btn) = doc.get_element_by_id(btn_id) {
+            let doc_clone = doc.clone();
+            let cb = Closure::wrap(Box::new(move |e: web_sys::Event| {
+                e.prevent_default();
+                if let Some(inp) = doc_clone.get_element_by_id("home-file-input").and_then(|el| el.dyn_into::<HtmlInputElement>().ok()) {
+                    inp.click();
+                }
+            }) as Box<dyn FnMut(_)>);
+            let _ = btn.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+            cb.forget();
+        }
+    }
+
+    // File input change handler
+    if let Some(inp) = doc.get_element_by_id("home-file-input").and_then(|el| el.dyn_into::<HtmlInputElement>().ok()) {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: web_sys::Event| {
+            if let Some(input) = e.target().and_then(|t| t.dyn_into::<HtmlInputElement>().ok()) {
+                if let Some(files) = input.files() {
+                    if let Some(file) = files.get(0) {
+                        read_file_as_pcb(st.clone(), file);
+                    }
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = inp.add_event_listener_with_callback("change", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    // 5. Drag & Drop on #home-dropzone
+    if let Some(dropzone) = doc.get_element_by_id("home-dropzone") {
+        let dz_click = dropzone.clone();
+        let doc_clone = doc.clone();
+        let click_cb = Closure::wrap(Box::new(move |_e: web_sys::Event| {
+            if let Some(inp) = doc_clone.get_element_by_id("home-file-input").and_then(|el| el.dyn_into::<HtmlInputElement>().ok()) {
+                inp.click();
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = dz_click.add_event_listener_with_callback("click", click_cb.as_ref().unchecked_ref());
+        click_cb.forget();
+
+        let dz_dragover = dropzone.clone();
+        let dragover_cb = Closure::wrap(Box::new(move |e: web_sys::DragEvent| {
+            e.prevent_default();
+            e.stop_propagation();
+            let _ = dz_dragover.class_list().add_1("dragover");
+        }) as Box<dyn FnMut(_)>);
+        let _ = dropzone.add_event_listener_with_callback("dragover", dragover_cb.as_ref().unchecked_ref());
+        dragover_cb.forget();
+
+        let dz_dragleave = dropzone.clone();
+        let dragleave_cb = Closure::wrap(Box::new(move |e: web_sys::DragEvent| {
+            e.prevent_default();
+            let _ = dz_dragleave.class_list().remove_1("dragover");
+        }) as Box<dyn FnMut(_)>);
+        let _ = dropzone.add_event_listener_with_callback("dragleave", dragleave_cb.as_ref().unchecked_ref());
+        dragleave_cb.forget();
+
+        let dz_drop = dropzone.clone();
+        let st = state;
+        let drop_cb = Closure::wrap(Box::new(move |e: web_sys::DragEvent| {
+            e.prevent_default();
+            e.stop_propagation();
+            let _ = dz_drop.class_list().remove_1("dragover");
+            if let Some(dt) = e.data_transfer() {
+                if let Some(files) = dt.files() {
+                    if let Some(file) = files.get(0) {
+                        read_file_as_pcb(st.clone(), file);
+                    }
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = dropzone.add_event_listener_with_callback("drop", drop_cb.as_ref().unchecked_ref());
+        drop_cb.forget();
     }
 }
 

@@ -48,6 +48,11 @@ features = [
   "Headers",
   "Performance",
   "DomTokenList",
+  "File",
+  "FileList",
+  "FileReader",
+  "DragEvent",
+  "DataTransfer",
 ]
 
 [profile.release]

@@ -1056,6 +1056,114 @@ pub fn compute_vector_diff_boards(
     )
 }
 
+/// Generates a valid, complete KiCad .kicad_pcb string for a starter project template.
+pub fn generate_template_kicad_pcb(
+    template: &str,
+    project_name: &str,
+    width_mm: f32,
+    height_mm: f32,
+) -> String {
+    let mut s = String::with_capacity(4096);
+    s.push_str("(kicad_pcb (version 20240108) (generator \"cadoxide_eda\")\n");
+    s.push_str("  (general (thickness 1.6))\n");
+    s.push_str("  (layers\n    (0 \"F.Cu\" signal)\n    (1 \"In1.Cu\" signal)\n    (2 \"In2.Cu\" signal)\n    (31 \"B.Cu\" signal)\n    (36 \"B.SilkS\" user)\n    (37 \"F.SilkS\" user)\n    (38 \"B.Mask\" user)\n    (39 \"F.Mask\" user)\n    (44 \"Edge.Cuts\" user)\n    (46 \"B.CrtYd\" user)\n    (47 \"F.CrtYd\" user)\n    (48 \"B.Fab\" user)\n    (49 \"F.Fab\" user)\n  )\n");
+    s.push_str("  (net 0 \"\")\n");
+    s.push_str("  (net 1 \"GND\")\n");
+    s.push_str("  (net 2 \"+3V3\")\n");
+    s.push_str("  (net 3 \"+5V\")\n");
+
+    let (w, h) = match template {
+        "rpi_hat" => (65.0, 56.0),
+        "iot_sensor" => (50.0, 40.0),
+        "eurocard" => (160.0, 100.0),
+        _ => (width_mm.max(25.0), height_mm.max(25.0)),
+    };
+
+    let x0 = 10.0f32;
+    let y0 = 10.0f32;
+    let x1 = x0 + w;
+    let y1 = y0 + h;
+
+    // Edge.Cuts rectangular boundary
+    s.push_str(&format!(
+        "  (gr_line (start {:.2} {:.2}) (end {:.2} {:.2}) (layer \"Edge.Cuts\") (width 0.15))\n",
+        x0, y0, x1, y0
+    ));
+    s.push_str(&format!(
+        "  (gr_line (start {:.2} {:.2}) (end {:.2} {:.2}) (layer \"Edge.Cuts\") (width 0.15))\n",
+        x1, y0, x1, y1
+    ));
+    s.push_str(&format!(
+        "  (gr_line (start {:.2} {:.2}) (end {:.2} {:.2}) (layer \"Edge.Cuts\") (width 0.15))\n",
+        x1, y1, x0, y1
+    ));
+    s.push_str(&format!(
+        "  (gr_line (start {:.2} {:.2}) (end {:.2} {:.2}) (layer \"Edge.Cuts\") (width 0.15))\n",
+        x0, y1, x0, y0
+    ));
+
+    // Corner mounting holes (M3: 3.2mm drill, or Pi HAT: 2.75mm drill)
+    let drill_diam = if template == "rpi_hat" { 2.75 } else { 3.2 };
+    let pad_diam = drill_diam + 2.4;
+    let inset = if template == "rpi_hat" { 3.5 } else { 4.5 };
+    let holes = [
+        (x0 + inset, y0 + inset),
+        (x1 - inset, y0 + inset),
+        (x1 - inset, y1 - inset),
+        (x0 + inset, y1 - inset),
+    ];
+    for (i, &(hx, hy)) in holes.iter().enumerate() {
+        s.push_str(&format!(
+            "  (footprint \"MountingHole:MountingHole_{:.1}mm_M{:.1}\" (layer \"F.Cu\")\n    (at {:.2} {:.2})\n    (property \"Reference\" \"H{}\" (at {:.2} {:.2}) (layer \"F.SilkS\") (effects (font (size 1 1) (thickness 0.15))))\n    (property \"Value\" \"MountingHole\" (at {:.2} {:.2}) (layer \"F.Fab\") (effects (font (size 1 1) (thickness 0.15))))\n    (pad \"1\" thru_hole circle (at 0 0) (size {:.2} {:.2}) (drill {:.2}) (layers \"*.Cu\" \"*.Mask\"))\n  )\n",
+            drill_diam, drill_diam, hx, hy, i + 1, hx, hy - 2.8, hx, hy + 2.8, pad_diam, pad_diam, drill_diam
+        ));
+    }
+
+    // If Raspberry Pi HAT template, add standard 40-pin header pads (2x20 at 2.54mm pitch)
+    if template == "rpi_hat" {
+        let pin_start_x = x0 + 7.0;
+        let pin_start_y = y0 + 3.5;
+        s.push_str(&format!(
+            "  (footprint \"Connector_PinHeader_2.54mm:PinHeader_2x20_P2.54mm_Vertical\" (layer \"F.Cu\")\n    (at {:.2} {:.2})\n    (property \"Reference\" \"J1\" (at {:.2} {:.2}) (layer \"F.SilkS\") (effects (font (size 1 1) (thickness 0.15))))\n    (property \"Value\" \"Raspberry_Pi_GPIO_40Pin\" (at {:.2} {:.2}) (layer \"F.Fab\") (effects (font (size 1 1) (thickness 0.15))))\n",
+            pin_start_x + 24.13, pin_start_y + 1.27, pin_start_x, pin_start_y - 2.0, pin_start_x, pin_start_y + 4.5
+        ));
+        for col in 0..20 {
+            let px = (col as f32) * 2.54;
+            let pin1 = col * 2 + 1;
+            let pin2 = col * 2 + 2;
+            let net1 = if pin1 == 1 { 2 } else if pin1 == 9 || pin1 == 25 || pin1 == 39 { 1 } else { 0 };
+            let net2 = if pin2 == 2 || pin2 == 4 { 3 } else if pin2 == 6 || pin2 == 14 || pin2 == 20 || pin2 == 30 || pin2 == 34 { 1 } else { 0 };
+            s.push_str(&format!(
+                "    (pad \"{}\" thru_hole circle (at {:.2} 0) (size 1.7 1.7) (drill 1.0) (layers \"*.Cu\" \"*.Mask\") (net {}))\n",
+                pin1, px, net1
+            ));
+            s.push_str(&format!(
+                "    (pad \"{}\" thru_hole circle (at {:.2} 2.54) (size 1.7 1.7) (drill 1.0) (layers \"*.Cu\" \"*.Mask\") (net {}))\n",
+                pin2, px, net2
+            ));
+        }
+        s.push_str("  )\n");
+    }
+
+    // Title and metadata silkscreen text
+    let clean_title = if project_name.trim().is_empty() {
+        "NEW_PROJECT"
+    } else {
+        project_name.trim()
+    };
+    s.push_str(&format!(
+        "  (gr_text \"{}\" (at {:.2} {:.2}) (layer \"F.SilkS\") (effects (font (size 2.2 2.2) (thickness 0.3))))\n",
+        clean_title, x0 + w * 0.5, y0 + h * 0.5 - 2.0
+    ));
+    s.push_str(&format!(
+        "  (gr_text \"CADOxide EDA · Rev 1.0\" (at {:.2} {:.2}) (layer \"F.SilkS\") (effects (font (size 1.3 1.3) (thickness 0.2))))\n",
+        x0 + w * 0.5, y0 + h * 0.5 + 3.0
+    ));
+
+    s.push_str(")\n");
+    s
+}
+
 /// Generates a 100,000+ primitive High-Density Interconnect (HDI) stress-test board in Rust memory.
 pub fn generate_hdi_stress_board(target_primitives: usize) -> ParsedBoard {
     let mut instances = Vec::with_capacity(target_primitives * FLOATS_PER_INSTANCE);
