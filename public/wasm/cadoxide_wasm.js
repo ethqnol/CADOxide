@@ -180,6 +180,9 @@ function __wbg_get_imports() {
             const ret = encodeURIComponent(getStringFromWasm0(arg0, arg1));
             return ret;
         },
+        __wbg_error_dd408a7b3cb542dd: function(arg0) {
+            console.error(arg0);
+        },
         __wbg_fetch_6500a72da8700672: function(arg0, arg1, arg2) {
             const ret = arg0.fetch(getStringFromWasm0(arg1, arg2));
             return ret;
@@ -385,6 +388,10 @@ function __wbg_get_imports() {
             const ret = arg0.length;
             return ret;
         },
+        __wbg_length_36bd29c6848c2144: function(arg0) {
+            const ret = arg0.length;
+            return ret;
+        },
         __wbg_lineTo_9495a068a4f48283: function(arg0, arg1, arg2) {
             arg0.lineTo(arg1, arg2);
         },
@@ -417,6 +424,10 @@ function __wbg_get_imports() {
             const ret = new WebSocket(getStringFromWasm0(arg0, arg1));
             return ret;
         }, arguments); },
+        __wbg_new_77cc4f4f472aeb81: function(arg0) {
+            const ret = new Uint8Array(arg0);
+            return ret;
+        },
         __wbg_now_8b265300afd5f2b9: function() {
             const ret = Date.now();
             return ret;
@@ -427,6 +438,9 @@ function __wbg_get_imports() {
         },
         __wbg_preventDefault_19878c58b8010668: function(arg0) {
             arg0.preventDefault();
+        },
+        __wbg_prototypesetcall_de8e0d9553586985: function(arg0, arg1, arg2) {
+            Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
         },
         __wbg_querySelectorAll_9b6a612499ecb916: function() { return handleError(function (arg0, arg1, arg2) {
             const ret = arg0.querySelectorAll(getStringFromWasm0(arg1, arg2));
@@ -440,8 +454,8 @@ function __wbg_get_imports() {
             const ret = Math.random();
             return ret;
         },
-        __wbg_readAsText_3990b1994faed1cb: function() { return handleError(function (arg0, arg1) {
-            arg0.readAsText(arg1);
+        __wbg_readAsArrayBuffer_1e0bf6cd0613d7fd: function() { return handleError(function (arg0, arg1) {
+            arg0.readAsArrayBuffer(arg1);
         }, arguments); },
         __wbg_readyState_fe79161592fd15ce: function(arg0) {
             const ret = arg0.readyState;
@@ -722,6 +736,11 @@ const CLOSURE_DTORS = (typeof FinalizationRegistry === 'undefined')
 function getArrayF32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
+function getArrayU8FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
 }
 
 let cachedDataViewMemory0 = null;

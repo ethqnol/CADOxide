@@ -1,3 +1,4 @@
+pub mod altium_parser;
 pub mod crdt_sync;
 pub mod drc_engine;
 pub mod footprint_library;
@@ -6,6 +7,7 @@ pub mod gl_renderer;
 pub mod overlay_renderer;
 pub mod parser;
 pub mod router;
+pub mod schematic;
 
 use crdt_sync::{CollabManager, CollabMessage, PeerCursor};
 use drc_engine::{validate_track_segment, validate_via_drop, DrcViolation};
@@ -178,6 +180,7 @@ pub struct AppController {
 
     // Phase 3: Bidirectional Schematic-PCB Cross-Probing
     pub cross_probe_info: Option<String>,
+    pub schematic_doc: schematic::SchematicDocument,
 }
 
 impl AppController {
@@ -1210,104 +1213,7 @@ impl AppController {
 }
 
 fn default_parts_catalog() -> Vec<PartLibraryEntry> {
-    vec![
-        PartLibraryEntry {
-            mpn: "BCM2712-CM5-MINIMA".to_string(),
-            manufacturer: "Raspberry Pi Ltd".to_string(),
-            description: "Compute Module 5 High-Speed B2B Carrier Interface".to_string(),
-            value: "CM5-Mod".to_string(),
-            footprint_name: "Module:RPi_CM5_DF40C_100DS".to_string(),
-            symbol_name: "MCU_Module:RPi_CM5".to_string(),
-            lifecycle_status: "active".to_string(),
-            unit_price_usd: 65.00,
-            digikey_stock: 4820,
-            mouser_stock: 3150,
-        },
-        PartLibraryEntry {
-            mpn: "STM32H743VIT6".to_string(),
-            manufacturer: "STMicroelectronics".to_string(),
-            description: "32-bit ARM Cortex-M7 MCU 480MHz 2MB Flash LQFP-100".to_string(),
-            value: "480MHz".to_string(),
-            footprint_name: "Package_QFP:LQFP-100_14x14mm_P0.5mm".to_string(),
-            symbol_name: "MCU_ST_STM32H7:STM32H743VITx".to_string(),
-            lifecycle_status: "active".to_string(),
-            unit_price_usd: 9.42,
-            digikey_stock: 18400,
-            mouser_stock: 12910,
-        },
-        PartLibraryEntry {
-            mpn: "TPS62130RGTR".to_string(),
-            manufacturer: "Texas Instruments".to_string(),
-            description: "3V-17V 3A Step-Down Buck Converter VQFN-16".to_string(),
-            value: "3.3V / 3A".to_string(),
-            footprint_name: "Package_DFN_QFN:VQFN-16-1EP_3x3mm_P0.5mm".to_string(),
-            symbol_name: "Regulator_Switching:TPS62130".to_string(),
-            lifecycle_status: "active".to_string(),
-            unit_price_usd: 1.85,
-            digikey_stock: 64200,
-            mouser_stock: 41000,
-        },
-        PartLibraryEntry {
-            mpn: "GRM155R71C104KA88D".to_string(),
-            manufacturer: "Murata Electronics".to_string(),
-            description: "MLCC 100nF 16V X7R 0402 Decoupling Capacitor".to_string(),
-            value: "100nF".to_string(),
-            footprint_name: "Capacitor_SMD:C_0402_1005Metric".to_string(),
-            symbol_name: "Device:C_Small".to_string(),
-            lifecycle_status: "active".to_string(),
-            unit_price_usd: 0.008,
-            digikey_stock: 1250000,
-            mouser_stock: 980000,
-        },
-        PartLibraryEntry {
-            mpn: "TUSB8041RGCR".to_string(),
-            manufacturer: "Texas Instruments".to_string(),
-            description: "4-Port USB 3.1 Gen1 SuperSpeed 5Gbps Hub Controller".to_string(),
-            value: "USB3-Hub".to_string(),
-            footprint_name: "Package_DFN_QFN:VQFN-64-1EP_9x9mm_P0.5mm".to_string(),
-            symbol_name: "Interface_USB:TUSB8041".to_string(),
-            lifecycle_status: "nrnd".to_string(),
-            unit_price_usd: 4.60,
-            digikey_stock: 1420,
-            mouser_stock: 610,
-        },
-        PartLibraryEntry {
-            mpn: "LAN7800-I/Y9X".to_string(),
-            manufacturer: "Microchip Technology".to_string(),
-            description: "USB 3.1 Gen1 to 10/100/1000 Gigabit Ethernet Bridge".to_string(),
-            value: "GbE-PHY".to_string(),
-            footprint_name: "Package_DFN_QFN:QFN-48-1EP_6x6mm_P0.4mm".to_string(),
-            symbol_name: "Interface_Ethernet:LAN7800".to_string(),
-            lifecycle_status: "active".to_string(),
-            unit_price_usd: 3.95,
-            digikey_stock: 9320,
-            mouser_stock: 7400,
-        },
-        PartLibraryEntry {
-            mpn: "SI5351A-B-GT".to_string(),
-            manufacturer: "Skyworks / Silicon Labs".to_string(),
-            description: "I2C Programmable Any-Frequency CMOS Clock Generator".to_string(),
-            value: "25MHz-PLL".to_string(),
-            footprint_name: "Package_SO:MSOP-10_3x3mm_P0.5mm".to_string(),
-            symbol_name: "Oscillator:Si5351A".to_string(),
-            lifecycle_status: "obsolete".to_string(),
-            unit_price_usd: 2.75,
-            digikey_stock: 0,
-            mouser_stock: 145,
-        },
-        PartLibraryEntry {
-            mpn: "DF40C-100DS-0.4V(51)".to_string(),
-            manufacturer: "Hirose Electric".to_string(),
-            description: "100-Pos 0.4mm Pitch High-Density Mezzanine Receptacle".to_string(),
-            value: "100P-B2B".to_string(),
-            footprint_name: "Connector_Hirose:Hirose_DF40C_100DS_0.4mm".to_string(),
-            symbol_name: "Connector_Generic:Conn_02x50".to_string(),
-            lifecycle_status: "active".to_string(),
-            unit_price_usd: 2.18,
-            digikey_stock: 28900,
-            mouser_stock: 19500,
-        },
-    ]
+    Vec::new()
 }
 
 #[wasm_bindgen(start)]
@@ -1401,6 +1307,7 @@ pub fn start_cadoxide_app() {
         target_length_tuning_mm: 50.0,
         collab: CollabManager::new(),
         cross_probe_info: None,
+        schematic_doc: schematic::SchematicDocument::new(),
     }));
 
     build_shell_dom(&doc, &root, state.clone());
@@ -1702,11 +1609,11 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               </button>
               <button id="tab-drc" class="cad-tab" title="DRC Rule Workbench (5)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                <span>DRC (<span id="drc-count-badge">69</span>)</span>
+                <span>DRC (<span id="drc-count-badge">0</span>)</span>
               </button>
               <button id="tab-parts" class="cad-tab" title="BOM &amp; Component Sourcing (6)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-                <span>BOM (8)</span>
+                <span>BOM (<span id="bom-count-badge">0</span>)</span>
               </button>
             </div>
 
@@ -2016,26 +1923,25 @@ fn build_shell_dom(doc: &Document, root: &Element, state: Rc<RefCell<AppControll
               </div>
 
               <!-- Interactive Pan & Wheel-Zoom Schematic Editor View -->
-              <div id="schematic-view-panel" class="hidden" style="position:absolute;inset:0;display:flex;flex-direction:column;background:#0e1013;z-index:30;">
-                <div style="height:28px;background:#16181d;border-bottom:1px solid #262a33;display:flex;align-items:center;justify-content:space-between;padding:0 10px;">
+              <div id="schematic-view-panel" class="hidden" style="position:absolute;inset:0;display:flex;flex-direction:column;background:#0d1117;z-index:30;">
+                <div style="height:32px;background:#161b22;border-bottom:1px solid #30363d;display:flex;align-items:center;justify-content:space-between;padding:0 10px;">
                   <div style="display:flex;align-items:center;gap:6px;">
-                    <span class="cad-param-label">Schematic Sheet:</span>
-                    <button data-sch="/samples/complex_hierarchy/complex_hierarchy.svg" class="sch-btn cad-btn cad-btn-active">Root Sheet</button>
-                    <button data-sch="/samples/complex_hierarchy/complex_hierarchy-ampli_ht_horizontal.svg" class="sch-btn cad-btn">ampli_ht_horizontal.kicad_sch</button>
-                    <button data-sch="/samples/complex_hierarchy/complex_hierarchy-ampli_ht_vertical.svg" class="sch-btn cad-btn">ampli_ht_vertical.kicad_sch</button>
+                    <button id="btn-sch-nav-up" class="cad-btn" style="padding:2px 8px;font-size:11px;" title="Navigate Up to Parent Schematic Sheet">▲ Up</button>
+                    <span class="cad-param-label" style="color:#8b949e;font-size:11px;">Hierarchy:</span>
+                    <div id="sch-breadcrumb-list" style="display:flex;align-items:center;gap:4px;"></div>
                   </div>
-                  <div style="display:flex;align-items:center;gap:5px;">
-                    <span style="font-size:11px;color:#8e96a8;">Wheel to Zoom, Drag to Pan</span>
-                    <button id="btn-sch-reset" class="cad-btn">Reset Zoom (100%)</button>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-size:11px;color:#8b949e;">Wheel to Zoom, Drag to Pan</span>
+                    <button id="btn-sch-reset" class="cad-btn" style="padding:2px 8px;font-size:11px;">Reset Zoom (100%)</button>
                   </div>
                 </div>
-                <div id="schematic-viewport" style="flex:1;overflow:hidden;position:relative;background:#f8fafc;cursor:grab;display:flex;align-items:center;justify-content:center;">
-                  <div id="schematic-canvas-inner" style="transform-origin:center center;transition:none;display:flex;align-items:center;justify-content:center;">
-                    <img id="schematic-svg-img" src="/samples/complex_hierarchy/complex_hierarchy.svg" draggable="false" style="max-width:92vw;max-height:82vh;pointer-events:none;" />
+                <div id="schematic-viewport" style="flex:1;overflow:hidden;position:relative;background:#0d1117;cursor:grab;display:flex;align-items:center;justify-content:center;">
+                  <div id="schematic-canvas-inner" style="transform-origin:center center;transition:none;display:flex;align-items:center;justify-content:center;width:100%;height:100%;">
+                    <!-- Interactive SVG injected here by render_active_schematic_sheet() -->
                   </div>
                   <div id="sch-cross-probe-pill" style="position:absolute;bottom:14px;left:14px;background:rgba(15,23,42,0.92);backdrop-filter:blur(6px);border:1px solid #0284c7;border-radius:6px;padding:6px 12px;display:flex;align-items:center;gap:8px;font-size:11px;color:#e2e8f0;box-shadow:0 4px 12px rgba(0,0,0,0.5);z-index:40;pointer-events:none;">
                     <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#38bdf8;box-shadow:0 0 6px #38bdf8;"></span>
-                    <span id="sch-cross-probe-label">Cross-Probe Active: Click schematic sheet to highlight net &amp; primitives in PCB</span>
+                    <span id="sch-cross-probe-label">Cross-Probe Active: Click schematic symbol/wire to highlight in PCB layout</span>
                   </div>
                 </div>
               </div>
@@ -2635,7 +2541,11 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                                     net_id,
                                     0.0,
                                 );
+                                let (prim_id, clock) = app.collab.next_primitive_id();
                                 app.collab.send_message(&CollabMessage::AddTrack {
+                                    project_id: app.collab.current_project_id.clone(),
+                                    id: prim_id,
+                                    clock,
                                     user_id: app.collab.local_user_id.clone(),
                                     sx: pair[0].0,
                                     sy: pair[0].1,
@@ -2653,6 +2563,19 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                             app.render_inspector_panel();
                         }
                     } else {
+                        // Check if net is locked by another engineer
+                        if picked_net > 0 && app.collab.is_net_locked_by_other(picked_net).is_some() {
+                            if let Some(lbl) = app.doc.get_element_by_id("sch-cross-probe-label") {
+                                lbl.set_text_content(Some(&format!(
+                                    "⚠ Net {} is locked by another engineer. Collision prevented.",
+                                    picked_net
+                                )));
+                            }
+                            return;
+                        }
+                        if picked_net > 0 {
+                            app.collab.lock_net(picked_net, 15000);
+                        }
                         app.route_start_mm = Some((start_pt.0, start_pt.1, picked_net));
                         if picked_net > 0 {
                             app.select_net_probe(picked_net as i32);
@@ -2738,7 +2661,11 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                                     net_id,
                                     0.0,
                                 );
+                                let (prim_id, clock) = app.collab.next_primitive_id();
                                 app.collab.send_message(&CollabMessage::AddTrack {
+                                    project_id: app.collab.current_project_id.clone(),
+                                    id: prim_id,
+                                    clock,
                                     user_id: app.collab.local_user_id.clone(),
                                     sx: w_pair[0].0,
                                     sy: w_pair[0].1,
@@ -2749,6 +2676,7 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                                     net_id,
                                 });
                             }
+                            app.collab.unlock_net(net_id);
                             app.route_start_mm = None;
                             app.populate_net_selector();
                             app.rebuild_gpu_buffer_with_markers();
@@ -2810,7 +2738,11 @@ fn bind_canvas_interactions(canvas: &HtmlCanvasElement, state: Rc<RefCell<AppCon
                         net_id,
                         1.0,
                     );
+                    let (prim_id, clock) = app.collab.next_primitive_id();
                     app.collab.send_message(&CollabMessage::AddVia {
+                        project_id: app.collab.current_project_id.clone(),
+                        id: prim_id,
+                        clock,
                         user_id: app.collab.local_user_id.clone(),
                         x: snapped.0,
                         y: snapped.1,
@@ -3738,6 +3670,68 @@ fn bind_schematic_interactions(doc: &Document, state: Rc<RefCell<AppController>>
         {
             let st = state.clone();
             let on_click = Closure::wrap(Box::new(move |e: MouseEvent| {
+                if let Some(target) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
+                    // 1. Check if clicked a hierarchical sub-sheet box
+                    if let Ok(Some(box_el)) = target.closest(".sch-subsheet-box") {
+                        let sheet_file = box_el.get_attribute("data-sheet-file").unwrap_or_default();
+                        let sheet_name = box_el.get_attribute("data-sheet-name").unwrap_or_default();
+                        let target_id = sheet_file
+                            .trim_end_matches(".kicad_sch")
+                            .trim_end_matches(".SchDoc")
+                            .to_string();
+
+                        let mut app = st.borrow_mut();
+                        if app.schematic_doc.sheets.contains_key(&target_id) {
+                            app.schematic_doc.navigate_to_sheet(&target_id);
+                        } else {
+                            // Register sub-sheet
+                            let new_sheet = schematic::SchematicSheet {
+                                id: target_id.clone(),
+                                name: sheet_name,
+                                filename: sheet_file,
+                                symbols: Vec::new(),
+                                wires: Vec::new(),
+                                junctions: Vec::new(),
+                                labels: Vec::new(),
+                                sub_sheets: Vec::new(),
+                                bounds: [0.0, 0.0, 297.0, 210.0],
+                            };
+                            app.schematic_doc.sheets.insert(target_id.clone(), new_sheet);
+                            app.schematic_doc.navigate_to_sheet(&target_id);
+                        }
+                        drop(app);
+                        render_active_schematic_sheet(&st);
+                        return;
+                    }
+
+                    // 2. Check if clicked a component symbol box (bidirectional cross-probe!)
+                    if let Ok(Some(sym_el)) = target.closest(".sch-symbol-box") {
+                        let ref_des = sym_el.get_attribute("data-sym-ref").unwrap_or_default();
+                        let val = sym_el.get_attribute("data-sym-val").unwrap_or_default();
+                        let mut app = st.borrow_mut();
+                        if let Some(comp) = app
+                            .current_board
+                            .components
+                            .iter()
+                            .find(|c| c.reference == ref_des)
+                            .cloned()
+                        {
+                            if let Some(ref mut r) = app.renderer {
+                                r.center_mm = (comp.x, comp.y);
+                            }
+                            app.draw_all();
+                            if let Some(lbl) = app.doc.get_element_by_id("sch-cross-probe-label") {
+                                lbl.set_text_content(Some(&format!(
+                                    "Cross-Probe: Selected {} ({}) at ({:.2}, {:.2}) mm in PCB Layout",
+                                    ref_des, val, comp.x, comp.y
+                                )));
+                            }
+                        }
+                        return;
+                    }
+                }
+
+                // 3. Fallback net highlight if clicking canvas
                 let mut app = st.borrow_mut();
                 let mut net_keys: Vec<u32> = app
                     .current_board
@@ -3786,6 +3780,34 @@ fn bind_schematic_interactions(doc: &Document, state: Rc<RefCell<AppController>>
             let _ = vp.add_event_listener_with_callback("click", on_click.as_ref().unchecked_ref());
             on_click.forget();
         }
+    }
+
+    if let Some(btn_up) = doc.get_element_by_id("btn-sch-nav-up") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |_e: Event| {
+            if st.borrow_mut().schematic_doc.navigate_up() {
+                render_active_schematic_sheet(&st);
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = btn_up.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
+    }
+
+    if let Some(crumb_list) = doc.get_element_by_id("sch-breadcrumb-list") {
+        let st = state.clone();
+        let cb = Closure::wrap(Box::new(move |e: Event| {
+            if let Some(target) = e.target().and_then(|t| t.dyn_into::<Element>().ok()) {
+                if let Ok(Some(chip)) = target.closest(".sch-breadcrumb-btn") {
+                    if let Some(sheet_id) = chip.get_attribute("data-sheet-id") {
+                        if st.borrow_mut().schematic_doc.navigate_to_sheet(&sheet_id) {
+                            render_active_schematic_sheet(&st);
+                        }
+                    }
+                }
+            }
+        }) as Box<dyn FnMut(_)>);
+        let _ = crumb_list.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+        cb.forget();
     }
 
     if let Some(btn_reset) = doc.get_element_by_id("btn-sch-reset") {
@@ -5034,10 +5056,38 @@ pub fn switch_view_tab(state: &Rc<RefCell<AppController>>, mode: &str) {
         app.draw_all();
     }
     app.update_telemetry_hud();
+    drop(app);
 
     if mode == "drc" {
-        drop(app);
         render_drc_workbench(state);
+    } else if mode == "schematic" {
+        render_active_schematic_sheet(state);
+    }
+}
+
+pub fn render_active_schematic_sheet(state: &Rc<RefCell<AppController>>) {
+    let app = state.borrow();
+    if let Some(inner) = app.doc.get_element_by_id("schematic-canvas-inner") {
+        let svg = app.schematic_doc.render_active_sheet_svg();
+        inner.set_inner_html(&svg);
+    }
+    if let Some(crumb_list) = app.doc.get_element_by_id("sch-breadcrumb-list") {
+        let mut crumbs_html = String::new();
+        for (i, sheet_id) in app.schematic_doc.hierarchy_path.iter().enumerate() {
+            let sheet_name = app.schematic_doc.sheets.get(sheet_id).map(|s| s.name.as_str()).unwrap_or(sheet_id);
+            let is_last = i == app.schematic_doc.hierarchy_path.len() - 1;
+            let active_cls = if is_last { "cad-btn-active" } else { "" };
+            crumbs_html.push_str(&format!(
+                r#"<button class="cad-btn sch-breadcrumb-btn {active}" data-sheet-id="{id}" style="font-size:11px;padding:2px 8px;">{name}</button>"#,
+                active = active_cls,
+                id = sheet_id,
+                name = sheet_name
+            ));
+            if !is_last {
+                crumbs_html.push_str(r#"<span style="color:#64748b;font-size:10px;">/</span>"#);
+            }
+        }
+        crumb_list.set_inner_html(&crumbs_html);
     }
 }
 
@@ -5050,49 +5100,99 @@ fn render_parts_list(state: &Rc<RefCell<AppController>>) {
 
     let q = app.parts_filter.to_lowercase();
     let mut html = String::new();
-    for p in &app.parts_catalog {
-        if !q.is_empty()
-            && !p.mpn.to_lowercase().contains(&q)
-            && !p.manufacturer.to_lowercase().contains(&q)
-            && !p.description.to_lowercase().contains(&q)
-            && !p.footprint_name.to_lowercase().contains(&q)
-        {
-            continue;
+
+    if !app.parts_catalog.is_empty() {
+        let mut count = 0;
+        for p in &app.parts_catalog {
+            if !q.is_empty()
+                && !p.mpn.to_lowercase().contains(&q)
+                && !p.manufacturer.to_lowercase().contains(&q)
+                && !p.description.to_lowercase().contains(&q)
+                && !p.footprint_name.to_lowercase().contains(&q)
+            {
+                continue;
+            }
+            count += 1;
+            let status_color = match p.lifecycle_status.as_str() {
+                "active" => "#34d399",
+                "nrnd" => "#fbbf24",
+                _ => "#f87171",
+            };
+
+            html.push_str(&format!(
+                r#"<div class="cad-table-row">
+                     <div>
+                       <div style="display:flex;align-items:center;gap:8px;">
+                         <span style="font-family:monospace;font-weight:700;color:#79b8ff;font-size:12px;">{mpn}</span>
+                         <span style="color:#8b93a6;font-size:11px;">{mfr}</span>
+                         <span style="font-family:monospace;font-size:10px;text-transform:uppercase;color:{status_color};">[{status}]</span>
+                       </div>
+                       <div style="color:#d0d6e2;font-size:11px;margin-top:2px;">{desc}</div>
+                       <div style="font-family:monospace;font-size:10px;color:#6c768a;margin-top:2px;">Footprint: {fp} | Symbol: {sym}</div>
+                     </div>
+                     <div style="text-align:right;font-family:monospace;font-size:11px;">
+                       <div style="color:#f0f3f8;font-weight:600;">${price:.3}</div>
+                       <div style="font-size:10px;color:#8b93a6;">DK: {dk} | Mouser: {ms}</div>
+                     </div>
+                   </div>"#,
+                mpn = p.mpn,
+                mfr = p.manufacturer,
+                status_color = status_color,
+                status = p.lifecycle_status,
+                desc = p.description,
+                fp = p.footprint_name,
+                sym = p.symbol_name,
+                price = p.unit_price_usd,
+                dk = p.digikey_stock,
+                ms = p.mouser_stock
+            ));
         }
-
-        let status_color = match p.lifecycle_status.as_str() {
-            "active" => "#34d399",
-            "nrnd" => "#fbbf24",
-            _ => "#f87171",
-        };
-
-        html.push_str(&format!(
-            r#"<div class="cad-table-row">
-                 <div>
-                   <div style="display:flex;align-items:center;gap:8px;">
-                     <span style="font-family:monospace;font-weight:700;color:#79b8ff;font-size:12px;">{mpn}</span>
-                     <span style="color:#8b93a6;font-size:11px;">{mfr}</span>
-                     <span style="font-family:monospace;font-size:10px;text-transform:uppercase;color:{status_color};">[{status}]</span>
-                   </div>
-                   <div style="color:#d0d6e2;font-size:11px;margin-top:2px;">{desc}</div>
-                   <div style="font-family:monospace;font-size:10px;color:#6c768a;margin-top:2px;">Footprint: {fp} | Symbol: {sym}</div>
-                 </div>
-                 <div style="text-align:right;font-family:monospace;font-size:11px;">
-                   <div style="color:#f0f3f8;font-weight:600;">${price:.3}</div>
-                   <div style="font-size:10px;color:#8b93a6;">DK: {dk} | Mouser: {ms}</div>
-                 </div>
-               </div>"#,
-            mpn = p.mpn,
-            mfr = p.manufacturer,
-            status_color = status_color,
-            status = p.lifecycle_status,
-            desc = p.description,
-            fp = p.footprint_name,
-            sym = p.symbol_name,
-            price = p.unit_price_usd,
-            dk = p.digikey_stock,
-            ms = p.mouser_stock
-        ));
+        if let Some(badge) = app.doc.get_element_by_id("bom-count-badge") {
+            badge.set_text_content(Some(&count.to_string()));
+        }
+    } else {
+        // Dynamically populate live Bill of Materials from parsed board components!
+        let mut count = 0;
+        for comp in &app.current_board.components {
+            if !q.is_empty()
+                && !comp.reference.to_lowercase().contains(&q)
+                && !comp.value.to_lowercase().contains(&q)
+                && !comp.footprint.to_lowercase().contains(&q)
+            {
+                continue;
+            }
+            count += 1;
+            html.push_str(&format!(
+                r#"<div class="cad-table-row">
+                     <div>
+                       <div style="display:flex;align-items:center;gap:8px;">
+                         <span style="font-family:monospace;font-weight:700;color:#79b8ff;font-size:12px;">{ref_des}</span>
+                         <span style="color:#f0f3f8;font-size:11px;font-weight:600;">{val}</span>
+                         <span style="font-family:monospace;font-size:10px;text-transform:uppercase;color:#38bdf8;">[{layer}]</span>
+                       </div>
+                       <div style="font-family:monospace;font-size:11px;color:#94a3b8;margin-top:2px;">Footprint: {fp}</div>
+                       <div style="font-family:monospace;font-size:10px;color:#64748b;margin-top:2px;">Position: ({x:.2}, {y:.2}) mm | Rot: {rot:.1}°</div>
+                     </div>
+                     <div style="text-align:right;font-family:monospace;font-size:11px;">
+                       <div style="color:#34d399;font-weight:600;">Placed</div>
+                       <div style="font-size:10px;color:#8b93a6;">Active PCB</div>
+                     </div>
+                   </div>"#,
+                ref_des = comp.reference,
+                val = if comp.value.is_empty() { "—" } else { &comp.value },
+                layer = comp.layer,
+                fp = comp.footprint,
+                x = comp.x,
+                y = comp.y,
+                rot = comp.rot_deg
+            ));
+        }
+        if let Some(badge) = app.doc.get_element_by_id("bom-count-badge") {
+            badge.set_text_content(Some(&count.to_string()));
+        }
+        if count == 0 {
+            html = r#"<div style="padding:24px;text-align:center;color:#64748b;font-size:12px;">No components or BOM entries found on active board.</div>"#.to_string();
+        }
     }
     container.set_inner_html(&html);
 }
@@ -5114,12 +5214,19 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
         let mut app = state.borrow_mut();
         app.active_project = proj_id_saved.clone();
         app.project_name = proj_id_saved.clone();
+        app.current_board = ParsedBoard::empty();
+        app.board_rev_a = ParsedBoard::empty();
+        app.board_rev_b = ParsedBoard::empty();
+        app.board_diff = ParsedBoard::empty();
+        app.undo_stack.clear();
         app.drc_items.clear();
         app.drc_violations.clear();
         app.selected_primitive_idx = None;
         app.route_start_mm = None;
         app.poly_points_mm.clear();
+        app.collab.switch_room(&proj_id_saved);
         app.rebuild_gpu_buffer_with_markers();
+        app.draw_all();
 
         if let Some(sel) = app
             .doc
@@ -5135,14 +5242,6 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
                 "/samples/complex_hierarchy/board.wrl"
             };
             let _ = link.set_attribute("href", href);
-        }
-        if let Some(img) = app.doc.get_element_by_id("schematic-svg-img") {
-            let src = if proj_id_saved == "cm5_minima" {
-                "/samples/cm5_minima/CM5_MINIMA_3-F_Cu.svg"
-            } else {
-                "/samples/complex_hierarchy/complex_hierarchy.svg"
-            };
-            let _ = img.set_attribute("src", src);
         }
     }
 
@@ -5180,6 +5279,7 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
             app.draw_all();
             app.update_telemetry_hud();
         }
+        render_parts_list(&state);
         run_live_drc(&state);
         return;
     }
@@ -5231,6 +5331,21 @@ fn fetch_project_boards(state: Rc<RefCell<AppController>>, project_id: &str) {
             }
 
             run_live_drc(&st);
+            render_parts_list(&st);
+
+            let sch_url = if proj_check == "cm5_minima" {
+                None
+            } else {
+                Some("/samples/complex_hierarchy/complex_hierarchy.kicad_sch")
+            };
+            if let Some(sch_path) = sch_url {
+                let st_sch = st.clone();
+                fetch_text_with_callback(sch_path, move |sch_text| {
+                    let doc = schematic::parse_kicad_sch_str(&sch_text, "root", "complex_hierarchy");
+                    st_sch.borrow_mut().schematic_doc = doc;
+                    render_active_schematic_sheet(&st_sch);
+                });
+            }
 
             let st2 = st.clone();
             let proj_check2 = proj_check.clone();
@@ -5614,15 +5729,20 @@ pub fn render_footprint_modal_content(state: &Rc<RefCell<AppController>>) {
     }
 }
 
-pub fn load_kicad_pcb_string(state: &Rc<RefCell<AppController>>, content: &str, project_name: &str) {
+pub fn load_custom_parsed_board(
+    state: &Rc<RefCell<AppController>>,
+    board: ParsedBoard,
+    project_name: &str,
+    file_kind: &str,
+) {
     let t0 = js_sys::Date::now();
-    let board = parse_kicad_pcb_str(content);
-    let dt = js_sys::Date::now() - t0;
+    let comp_count = board.components.len();
     {
         let mut app = state.borrow_mut();
         app.custom_board = Some((project_name.to_string(), board.clone()));
         app.project_name = project_name.to_string();
         app.active_project = project_name.to_string();
+        app.collab.switch_room(project_name);
         app.rel_origin_mm = (board.bounds[0], board.bounds[3]);
         app.board_rev_a = board.clone();
         app.board_rev_b = board.clone();
@@ -5632,7 +5752,7 @@ pub fn load_kicad_pcb_string(state: &Rc<RefCell<AppController>>, content: &str, 
         app.selected_primitive_idx = None;
         app.route_start_mm = None;
         app.poly_points_mm.clear();
-        app.parse_time_ms = dt;
+        app.parse_time_ms = js_sys::Date::now() - t0;
         app.populate_net_selector();
         app.select_net_probe(0);
         app.rebuild_gpu_buffer_with_markers();
@@ -5641,6 +5761,10 @@ pub fn load_kicad_pcb_string(state: &Rc<RefCell<AppController>>, content: &str, 
         }
         app.draw_all();
         app.update_telemetry_hud();
+
+        if let Some(badge) = app.doc.get_element_by_id("bom-count-badge") {
+            badge.set_text_content(Some(&comp_count.to_string()));
+        }
 
         // Register custom project in topbar project selector
         if let Some(sel) = app
@@ -5669,7 +5793,7 @@ pub fn load_kicad_pcb_string(state: &Rc<RefCell<AppController>>, content: &str, 
                        </div>
                        <div>
                          <div class="home-row-name">{name}</div>
-                         <div class="home-row-file">Loaded KiCad PCB Board</div>
+                         <div class="home-row-file">{kind}</div>
                        </div>
                      </div>
                      <div class="home-row-meta">
@@ -5681,13 +5805,63 @@ pub fn load_kicad_pcb_string(state: &Rc<RefCell<AppController>>, content: &str, 
                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
                      </button>
                    </div>"##,
-                name = project_name
+                name = project_name,
+                kind = file_kind
             );
             container.set_inner_html(&row_html);
         }
     }
+    render_parts_list(state);
     run_live_drc(state);
     switch_view_tab(state, "pcb");
+}
+
+pub fn load_kicad_pcb_string(state: &Rc<RefCell<AppController>>, content: &str, project_name: &str) {
+    let board = parse_kicad_pcb_str(content);
+    load_custom_parsed_board(state, board, project_name, "Loaded KiCad PCB Board");
+}
+
+pub fn handle_loaded_file_bytes(state: &Rc<RefCell<AppController>>, bytes: &[u8], filename: &str) {
+    let lower = filename.to_lowercase();
+    let is_cfb = altium_parser::CfbReader::is_cfb(bytes);
+
+    if lower.ends_with(".pcbdoc") || (is_cfb && !lower.ends_with(".schdoc")) {
+        match altium_parser::parse_altium_pcbdoc_bytes(bytes) {
+            Ok(board) => {
+                load_custom_parsed_board(state, board, filename, "Altium .PcbDoc Board");
+            }
+            Err(e) => {
+                web_sys::console::error_1(&format!("Failed to parse Altium PcbDoc: {}", e).into());
+            }
+        }
+    } else if lower.ends_with(".schdoc") || (is_cfb && lower.ends_with(".schdoc")) {
+        match schematic::parse_altium_schdoc_bytes(bytes, "root", filename) {
+            Ok(doc) => {
+                state.borrow_mut().schematic_doc = doc;
+                render_active_schematic_sheet(state);
+                switch_view_tab(state, "schematic");
+            }
+            Err(e) => {
+                web_sys::console::error_1(&format!("Failed to parse Altium SchDoc: {}", e).into());
+            }
+        }
+    } else if lower.ends_with(".kicad_sch") {
+        if let Ok(text) = std::str::from_utf8(bytes) {
+            let doc = schematic::parse_kicad_sch_str(text, "root", filename);
+            state.borrow_mut().schematic_doc = doc;
+            render_active_schematic_sheet(state);
+            switch_view_tab(state, "schematic");
+        }
+    } else if let Ok(text) = std::str::from_utf8(bytes) {
+        if text.contains("(kicad_sch") {
+            let doc = schematic::parse_kicad_sch_str(text, "root", filename);
+            state.borrow_mut().schematic_doc = doc;
+            render_active_schematic_sheet(state);
+            switch_view_tab(state, "schematic");
+        } else {
+            load_kicad_pcb_string(state, text, filename);
+        }
+    }
 }
 
 fn read_file_as_pcb(state: Rc<RefCell<AppController>>, file: web_sys::File) {
@@ -5701,14 +5875,14 @@ fn read_file_as_pcb(state: Rc<RefCell<AppController>>, file: web_sys::File) {
     let name_clone = file_name.clone();
     let onload = Closure::wrap(Box::new(move |_e: web_sys::Event| {
         if let Ok(js_val) = r_clone.result() {
-            if let Some(text) = js_val.as_string() {
-                load_kicad_pcb_string(&st, &text, &name_clone);
-            }
+            let uint8 = js_sys::Uint8Array::new(&js_val);
+            let bytes = uint8.to_vec();
+            handle_loaded_file_bytes(&st, &bytes, &name_clone);
         }
     }) as Box<dyn FnMut(_)>);
     reader.set_onload(Some(onload.as_ref().unchecked_ref()));
     onload.forget();
-    let _ = reader.read_as_text(&file);
+    let _ = reader.read_as_array_buffer(&file);
 }
 
 pub fn setup_home_and_project_hub(doc: &Document, state: Rc<RefCell<AppController>>) {
@@ -6002,6 +6176,7 @@ fn init_collab_websocket(state: Rc<RefCell<AppController>>) {
             let mut app = st.borrow_mut();
             app.collab.is_connected = true;
             let join_msg = CollabMessage::Join {
+                project_id: app.collab.current_project_id.clone(),
                 user_id: app.collab.local_user_id.clone(),
                 user_name: app.collab.local_user_name.clone(),
                 color: app.collab.local_color.clone(),
@@ -6068,6 +6243,34 @@ fn init_collab_websocket(state: Rc<RefCell<AppController>>) {
                                 net_id,
                                 1.0,
                             );
+                            app.rebuild_gpu_buffer_with_markers();
+                        }
+                        CollabMessage::SyncSnapshot {
+                            tracks,
+                            vias,
+                            tombstones,
+                            locked_nets,
+                            ..
+                        } => {
+                            let tomb_set: std::collections::HashSet<String> = tombstones.into_iter().collect();
+                            for trk in tracks {
+                                if !tomb_set.contains(&trk.id) {
+                                    app.current_board.add_primitive(
+                                        trk.sx, trk.sy, trk.ex, trk.ey, trk.w, trk.w, trk.layer, trk.net_id, 0.0,
+                                    );
+                                }
+                            }
+                            for via in vias {
+                                if !tomb_set.contains(&via.id) {
+                                    app.current_board.add_primitive(
+                                        via.x, via.y, via.x, via.y, via.size, via.drill, LAYER_F_CU | LAYER_B_CU, via.net_id, 1.0,
+                                    );
+                                }
+                            }
+                            for (net_id, uid, uname) in locked_nets {
+                                let exp = js_sys::Date::now() + 15000.0;
+                                app.collab.locked_nets.insert(net_id, (uid, uname, exp));
+                            }
                             app.rebuild_gpu_buffer_with_markers();
                         }
                         _ => {}

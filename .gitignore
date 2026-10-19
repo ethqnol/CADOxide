@@ -8,3 +8,4 @@ crates/*/target/
 *.db
 *.log
 PLAN.md
+PROPOSAL.md

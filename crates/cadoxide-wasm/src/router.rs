@@ -20,6 +20,7 @@ pub struct Obstacle {
     pub radius: f32,
     pub net_id: u32,
     pub is_round: bool,
+    pub is_movable: bool,
 }
 
 impl Obstacle {
@@ -120,6 +121,7 @@ impl TopologicalRouter {
                         let w = chunk[4];
                         let h = chunk[5];
                         let rad = (w.max(h) * 0.5) + clearance_mm;
+                        let is_movable = prim_type == 0 || prim_type == 1; // Tracks and vias can be shoved; pads and borders are fixed
 
                         obstacles.push(Obstacle {
                             instance_idx: idx,
@@ -130,6 +132,7 @@ impl TopologicalRouter {
                             radius: rad,
                             net_id: prim_net,
                             is_round: prim_type == 1 || prim_type == 2 || (x0 == x1 && y0 == y1),
+                            is_movable,
                         });
                     }
                 }
@@ -281,10 +284,13 @@ impl TopologicalRouter {
             let norm_y = sdx / slen;
 
             for obs in obstacles {
+                if !obs.is_movable {
+                    continue; // Fixed obstacles (pads, cutouts) cannot be shoved
+                }
                 let d = obs.dist_to_segment(p0.0, p0.1, p1.0, p1.1);
                 let needed = safe_dist + obs.radius;
                 if d < needed {
-                    let push_amount = (needed - d) + 0.05;
+                    let push_amount = ((needed - d) + 0.05).min(2.5); // Safe clamp
                     // Check which side of the line the obstacle center is on
                     let (cx, cy) = obs.center();
                     let side = (cx - p0.0) * norm_x + (cy - p0.1) * norm_y;
@@ -296,6 +302,33 @@ impl TopologicalRouter {
                     // Move obstacle in board instance buffer
                     if board.translate_primitive_in_place(obs.instance_idx, shift_x, shift_y) {
                         shoved_count += 1;
+
+                        // Cascade shove: query secondary obstacles displaced by this obstacle
+                        let sub_obs = Self::query_obstacles_in_rect(
+                            board,
+                            cx + shift_x - obs.radius,
+                            cy + shift_y - obs.radius,
+                            cx + shift_x + obs.radius,
+                            cy + shift_y + obs.radius,
+                            layer_mask,
+                            obs.net_id,
+                            clearance_mm,
+                        );
+                        for s_obs in sub_obs {
+                            if s_obs.instance_idx != obs.instance_idx && s_obs.is_movable {
+                                let s_dist = s_obs.dist_to_point(cx + shift_x, cy + shift_y);
+                                let s_needed = obs.radius + s_obs.radius;
+                                if s_dist < s_needed {
+                                    let s_push = (s_needed - s_dist + 0.05).min(1.5);
+                                    let _ = board.translate_primitive_in_place(
+                                        s_obs.instance_idx,
+                                        shift_x.signum() * s_push * 0.7,
+                                        shift_y.signum() * s_push * 0.7,
+                                    );
+                                    shoved_count += 1;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -430,5 +463,40 @@ mod tests {
     fn test_meander_length_tuning() {
         let pts = TopologicalRouter::build_length_tuned_meanders(0.0, 0.0, 20.0, 0.0, 0.25, 30.0);
         assert!(pts.len() > 2);
+    }
+
+    #[test]
+    fn test_push_and_shove_movable_vs_fixed_obstacle() {
+        let mut board = ParsedBoard::empty();
+        // Fixed obstacle: Pad at (10.0, 10.0), net 1 (prim_type 2.0 = pad)
+        let pad_idx = board.add_primitive(10.0, 10.0, 10.0, 10.0, 1.5, 1.5, LAYER_F_CU, 1, 2.0);
+
+        // Movable obstacle: Track passing through (10.0, 5.0) -> (10.0, 7.0), net 2 (prim_type 0.0 = track)
+        let track_idx = board.add_primitive(10.0, 5.0, 10.0, 7.0, 0.25, 0.25, LAYER_F_CU, 2, 0.0);
+
+        // Lay a new conflicting track segment along Y=6.0 from X=8.0 to X=12.0 on net 3
+        let new_segments = [((8.0, 6.0), (12.0, 6.0))];
+        let shoved = TopologicalRouter::push_and_shove_obstacles(
+            &mut board,
+            &new_segments,
+            0.25,
+            LAYER_F_CU,
+            3,
+            0.2,
+        );
+
+        assert!(shoved > 0, "Movable track must be shoved away");
+
+        // Verify track moved
+        let track_prim = board.get_primitive(track_idx).unwrap();
+        assert!(
+            (track_prim[1] - 5.0).abs() > 0.05 || (track_prim[3] - 7.0).abs() > 0.05,
+            "Track must have been displaced from original Y coordinates"
+        );
+
+        // Verify pad did NOT move
+        let pad_prim = board.get_primitive(pad_idx).unwrap();
+        assert_eq!(pad_prim[0], 10.0);
+        assert_eq!(pad_prim[1], 10.0);
     }
 }

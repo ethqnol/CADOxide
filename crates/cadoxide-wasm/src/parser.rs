@@ -140,6 +140,17 @@ pub struct HoveredPrimitiveInfo {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct BoardComponent {
+    pub reference: String,
+    pub value: String,
+    pub footprint: String,
+    pub x: f32,
+    pub y: f32,
+    pub rot_deg: f32,
+    pub layer: String,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct ParsedBoard {
     pub instances: Vec<f32>,
     pub primitive_count: usize,
@@ -151,6 +162,7 @@ pub struct ParsedBoard {
     pub texts: Vec<BoardText>,
     pub dimensions: Vec<CadDimension>,
     pub ratsnest_lines: Vec<((f32, f32), (f32, f32), u32)>,
+    pub components: Vec<BoardComponent>,
     pub total_pads: usize,
     pub total_vias: usize,
     pub total_tracks: usize,
@@ -178,6 +190,7 @@ impl ParsedBoard {
             texts: Vec::new(),
             dimensions: Vec::new(),
             ratsnest_lines: Vec::new(),
+            components: Vec::new(),
             total_pads: 0,
             total_vias: 0,
             total_tracks: 0,
@@ -736,6 +749,7 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
     let mut zones: Vec<CopperZone> = Vec::new();
     let mut pad_labels: Vec<PadLabel> = Vec::new();
     let mut texts: Vec<BoardText> = Vec::new();
+    let mut components: Vec<BoardComponent> = Vec::new();
 
     let mut min_x = f32::MAX;
     let mut min_y = f32::MAX;
@@ -747,6 +761,10 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
     let mut fp_x: f32 = 0.0;
     let mut fp_y: f32 = 0.0;
     let mut fp_rot_rad: f32 = 0.0;
+    let mut fp_name = String::new();
+    let mut fp_ref = String::new();
+    let mut fp_val = String::new();
+    let mut fp_layer = "F.Cu".to_string();
 
     let mut active_block = String::with_capacity(4096);
     let mut block_depth: i32 = 0;
@@ -822,6 +840,12 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
             fp_x = 0.0;
             fp_y = 0.0;
             fp_rot_rad = 0.0;
+            fp_name = extract_quoted_after(line, "(footprint ")
+                .or_else(|| extract_quoted_after(line, "(module "))
+                .unwrap_or_default();
+            fp_ref.clear();
+            fp_val.clear();
+            fp_layer = "F.Cu".to_string();
             continue;
         }
 
@@ -830,11 +854,34 @@ pub fn parse_kicad_pcb_str(pcb_source: &str) -> ParsedBoard {
             fp_depth += line_delta;
             if fp_depth <= 0 {
                 in_footprint = false;
+                if !fp_ref.is_empty() {
+                    components.push(BoardComponent {
+                        reference: fp_ref.clone(),
+                        value: fp_val.clone(),
+                        footprint: fp_name.clone(),
+                        x: fp_x,
+                        y: fp_y,
+                        rot_deg: fp_rot_rad.to_degrees(),
+                        layer: fp_layer.clone(),
+                    });
+                }
             } else if prev_fp_depth == 1 && line.starts_with("(at ") {
                 if let Some((x, y, rot)) = parse_at_triple(line) {
                     fp_x = x;
                     fp_y = y;
                     fp_rot_rad = rot.to_radians();
+                }
+            } else if line.starts_with("(layer ") {
+                if let Some(l) = extract_quoted_after(line, "(layer ") {
+                    fp_layer = l;
+                }
+            } else if line.contains("(property \"Reference\"") {
+                if let Some(r) = extract_quoted_after(line, "(property \"Reference\" ") {
+                    fp_ref = r;
+                }
+            } else if line.contains("(property \"Value\"") {
+                if let Some(v) = extract_quoted_after(line, "(property \"Value\" ") {
+                    fp_val = v;
                 }
             }
         }
@@ -1751,7 +1798,7 @@ fn count_parens(s: &str) -> i32 {
     delta
 }
 
-fn transform_point(lx: f32, ly: f32, fx: f32, fy: f32, rot_rad: f32) -> (f32, f32) {
+pub fn transform_point(lx: f32, ly: f32, fx: f32, fy: f32, rot_rad: f32) -> (f32, f32) {
     let (s, c) = rot_rad.sin_cos();
     let rx = lx * c - ly * s;
     let ry = lx * s + ly * c;
