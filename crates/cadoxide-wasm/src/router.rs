@@ -29,22 +29,13 @@ impl Obstacle {
     }
 
     pub fn dist_to_point(&self, px: f32, py: f32) -> f32 {
-        let (cx, cy) = self.center();
-        let dx = px - cx;
-        let dy = py - cy;
-        (dx * dx + dy * dy).sqrt()
+        let (dist, _, _) = crate::drc_engine::dist_point_to_segment(px, py, self.x0, self.y0, self.x1, self.y1);
+        dist
     }
 
     pub fn dist_to_segment(&self, sx: f32, sy: f32, ex: f32, ey: f32) -> f32 {
-        let (cx, cy) = self.center();
-        let l2 = (ex - sx).powi(2) + (ey - sy).powi(2);
-        if l2 < 1e-6 {
-            return ((cx - sx).powi(2) + (cy - sy).powi(2)).sqrt();
-        }
-        let t = (((cx - sx) * (ex - sx) + (cy - sy) * (ey - sy)) / l2).clamp(0.0, 1.0);
-        let proj_x = sx + t * (ex - sx);
-        let proj_y = sy + t * (ey - sy);
-        ((cx - proj_x).powi(2) + (cy - proj_y).powi(2)).sqrt()
+        let (dist, _, _) = crate::drc_engine::dist_segment_to_segment(sx, sy, ex, ey, self.x0, self.y0, self.x1, self.y1);
+        dist
     }
 }
 
@@ -255,13 +246,15 @@ impl TopologicalRouter {
         clearance_mm: f32,
     ) -> usize {
         let mut shoved_count = 0;
-        let safe_dist = track_width * 0.5 + clearance_mm;
+        // safe_dist is half track width; clearance_mm is already accounted for inside obs.radius
+        let safe_dist = track_width * 0.5;
+        let search_pad = safe_dist + clearance_mm + 2.0;
 
         for &(p0, p1) in new_segments {
-            let min_x = p0.0.min(p1.0) - safe_dist - 2.0;
-            let max_x = p0.0.max(p1.0) + safe_dist + 2.0;
-            let min_y = p0.1.min(p1.1) - safe_dist - 2.0;
-            let max_y = p0.1.max(p1.1) + safe_dist + 2.0;
+            let min_x = p0.0.min(p1.0) - search_pad;
+            let max_x = p0.0.max(p1.0) + search_pad;
+            let min_y = p0.1.min(p1.1) - search_pad;
+            let max_y = p0.1.max(p1.1) + search_pad;
 
             let obstacles = Self::query_obstacles_in_rect(
                 board,

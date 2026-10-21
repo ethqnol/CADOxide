@@ -5825,15 +5825,44 @@ pub fn handle_loaded_file_bytes(state: &Rc<RefCell<AppController>>, bytes: &[u8]
     let lower = filename.to_lowercase();
     let is_cfb = altium_parser::CfbReader::is_cfb(bytes);
 
-    if lower.ends_with(".pcbdoc") || (is_cfb && !lower.ends_with(".schdoc")) {
-        match altium_parser::parse_altium_pcbdoc_bytes(bytes) {
-            Ok(board) => {
-                load_custom_parsed_board(state, board, filename, "Altium .PcbDoc Board");
+    if lower.ends_with(".pcbdoc") || lower.ends_with(".brd") || (is_cfb && !lower.ends_with(".schdoc")) {
+        let b64 = gerber_exporter::to_base64(bytes);
+        let format_hint = if lower.ends_with(".pcbdoc") {
+            "altium"
+        } else if lower.ends_with(".brd") {
+            "eagle"
+        } else {
+            "auto"
+        };
+        let payload = serde_json::json!({
+            "filename": filename,
+            "content_base64": b64,
+            "format": format_hint,
+        });
+
+        let state_clone = state.clone();
+        let fname_clone = filename.to_string();
+        let bytes_owned = bytes.to_vec();
+
+        fetch_post_json_with_callback("/api/import-pcb", &payload.to_string(), move |resp_str| {
+            if let Ok(resp_json) = serde_json::from_str::<serde_json::Value>(&resp_str) {
+                if let Some(kicad_pcb_str) = resp_json.get("kicad_pcb").and_then(|v| v.as_str()) {
+                    if !kicad_pcb_str.is_empty() {
+                        load_kicad_pcb_string(&state_clone, kicad_pcb_str, &fname_clone);
+                        return;
+                    }
+                }
             }
-            Err(e) => {
-                web_sys::console::error_1(&format!("Failed to parse Altium PcbDoc: {}", e).into());
+            // Fallback to client-side parser if server returned error or offline
+            match altium_parser::parse_altium_pcbdoc_bytes(&bytes_owned) {
+                Ok(board) => {
+                    load_custom_parsed_board(&state_clone, board, &fname_clone, "Altium .PcbDoc Board");
+                }
+                Err(e) => {
+                    web_sys::console::error_1(&format!("Failed to parse Altium PcbDoc: {}", e).into());
+                }
             }
-        }
+        });
     } else if lower.ends_with(".schdoc") || (is_cfb && lower.ends_with(".schdoc")) {
         match schematic::parse_altium_schdoc_bytes(bytes, "root", filename) {
             Ok(doc) => {
@@ -6321,6 +6350,48 @@ fn fetch_text_with_callback<F: FnOnce(String) + 'static>(url: &str, callback: F)
         None => return,
     };
     let promise = window.fetch_with_str(url);
+    let cb_cell = Rc::new(RefCell::new(Some(callback)));
+
+    let on_resp = Closure::wrap(Box::new(move |resp_val: JsValue| {
+        if let Ok(resp) = resp_val.dyn_into::<web_sys::Response>() {
+            if let Ok(text_promise) = resp.text() {
+                let cb_inner = cb_cell.clone();
+                let on_text = Closure::wrap(Box::new(move |text_val: JsValue| {
+                    if let Some(s) = text_val.as_string() {
+                        if let Some(f) = cb_inner.borrow_mut().take() {
+                            f(s);
+                        }
+                    }
+                }) as Box<dyn FnMut(JsValue)>);
+                let _ = text_promise.then(&on_text);
+                on_text.forget();
+            }
+        }
+    }) as Box<dyn FnMut(JsValue)>);
+    let _ = promise.then(&on_resp);
+    on_resp.forget();
+}
+
+fn fetch_post_json_with_callback<F: FnOnce(String) + 'static>(url: &str, body_json: &str, callback: F) {
+    let window = match web_sys::window() {
+        Some(w) => w,
+        None => return,
+    };
+    let init = web_sys::RequestInit::new();
+    init.set_method("POST");
+    init.set_body(&JsValue::from_str(body_json));
+
+    if let Ok(headers) = web_sys::Headers::new() {
+        let _ = headers.set("Content-Type", "application/json");
+        init.set_headers(&headers);
+    }
+
+    let request = match web_sys::Request::new_with_str_and_init(url, &init) {
+        Ok(req) => req,
+        Err(_) => return,
+    };
+
+    let promise = window.fetch_with_request(&request);
     let cb_cell = Rc::new(RefCell::new(Some(callback)));
 
     let on_resp = Closure::wrap(Box::new(move |resp_val: JsValue| {

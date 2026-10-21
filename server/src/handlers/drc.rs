@@ -1,11 +1,13 @@
 //! DRC Execution & Violation Diagnostics Handlers
+//! Hardened against path traversal, blocking Tokio workers, and directory races.
 
+use crate::handlers::render::resolve_safe_pcb_path;
 use crate::models::{DrcRequest, DrcResult, DrcViolation};
 use crate::state::AppState;
 use axum::{extract::State, http::StatusCode, Json};
-use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::Ordering;
+use uuid::Uuid;
 
 pub async fn execute_drc(
     State(state): State<AppState>,
@@ -31,50 +33,57 @@ pub async fn execute_drc(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let base_path = match payload.project_path {
-        Some(ref p) => {
-            let candidate = PathBuf::from(p);
-            if candidate.exists() {
-                candidate
-            } else {
-                state.workspace_root.join("public/samples").join(p)
-            }
-        }
-        None => state.workspace_root.join("public/samples/complex_hierarchy"),
-    };
+    let pcb_path = resolve_safe_pcb_path(
+        &state.workspace_root,
+        payload.project_path.as_deref(),
+        &payload.pcb_filename,
+    )?;
 
-    let pcb_path = if PathBuf::from(&payload.pcb_filename).is_absolute() {
-        PathBuf::from(&payload.pcb_filename)
-    } else {
-        base_path.join(&payload.pcb_filename)
-    };
+    let drc_session_id = Uuid::new_v4().to_string();
+    let report_path = std::env::temp_dir().join(format!("cadoxide_drc_{}.json", drc_session_id));
+    let pcb_str = pcb_path.to_string_lossy().to_string();
+    let report_str = report_path.to_string_lossy().to_string();
 
-    let report_path = base_path.join(".cadoxide_drc.json");
+    let output = tokio::task::spawn_blocking(move || {
+        let cfg_dir = std::env::temp_dir().join(format!("kicad_cfg_{}", drc_session_id));
+        let data_dir = std::env::temp_dir().join(format!("kicad_data_{}", drc_session_id));
+        let _ = std::fs::create_dir_all(&cfg_dir);
+        let _ = std::fs::create_dir_all(&data_dir);
 
-    let output = Command::new("kicad-cli")
-        .env("XDG_CONFIG_HOME", "/tmp/kicad_cfg")
-        .env("XDG_DATA_HOME", "/tmp/kicad_data")
-        .args([
-            "pcb",
-            "drc",
-            "--format",
-            "json",
-            "--severity-all",
-            "--units",
-            "mm",
-            "-o",
-            report_path.to_str().unwrap(),
-            pcb_path.to_str().unwrap(),
-        ])
-        .output();
+        let res = Command::new("kicad-cli")
+            .env("XDG_CONFIG_HOME", cfg_dir.to_string_lossy().as_ref())
+            .env("XDG_DATA_HOME", data_dir.to_string_lossy().as_ref())
+            .args([
+                "pcb",
+                "drc",
+                "--format",
+                "json",
+                "--severity-all",
+                "--units",
+                "mm",
+                "-o",
+                &report_str,
+                &pcb_str,
+            ])
+            .output();
 
-    let (success, raw_json) = match output {
-        Ok(out) => {
-            let json_str =
-                std::fs::read_to_string(&report_path).unwrap_or_else(|_| "{}".to_string());
-            (out.status.success(), json_str)
-        }
-        Err(e) => (false, format!(r#"{{"error": "{}"}}"#, e)),
+        let _ = std::fs::remove_dir_all(&cfg_dir);
+        let _ = std::fs::remove_dir_all(&data_dir);
+        res
+    })
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Spawn error: {}", e)))?
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to execute kicad-cli: {}", e),
+        )
+    })?;
+
+    let (success, raw_json) = {
+        let json_str = std::fs::read_to_string(&report_path).unwrap_or_else(|_| "{}".to_string());
+        let _ = std::fs::remove_file(&report_path);
+        (output.status.success(), json_str)
     };
 
     let mut violations = Vec::new();

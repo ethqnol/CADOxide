@@ -27,6 +27,9 @@ pub struct AppState {
     pub cache_misses: Arc<AtomicU64>,
     pub jobs_completed: Arc<AtomicU64>,
     pub node_id: String,
+    #[allow(dead_code)]
     pub collab_tx: Arc<broadcast::Sender<String>>,
     pub rooms: Arc<Mutex<HashMap<String, RoomCrdtState>>>,
+    pub room_channels: Arc<Mutex<HashMap<String, broadcast::Sender<String>>>>,
 }
+

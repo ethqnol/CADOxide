@@ -31,6 +31,7 @@ use crate::collab::collab_ws_handler;
 use crate::db::init_db;
 use crate::handlers::{
     drc::execute_drc,
+    importer::{import_pcb_json, import_pcb_multipart},
     parts::get_parts,
     render::{export_3d_vrml, render_pcb},
     reviews::{add_message, create_thread, get_threads, update_thread_status},
@@ -80,6 +81,7 @@ async fn main() {
         node_id,
         collab_tx,
         rooms: Arc::new(Mutex::new(HashMap::new())),
+        room_channels: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let cors = CorsLayer::new()
@@ -92,6 +94,8 @@ async fn main() {
         .route("/api/cluster/metrics", get(get_cluster_metrics))
         .route("/api/render-pcb", post(render_pcb))
         .route("/api/execute-drc", post(execute_drc))
+        .route("/api/import-pcb", post(import_pcb_json))
+        .route("/api/import-pcb/upload", post(import_pcb_multipart))
         .route("/api/export-3d", post(export_3d_vrml))
         .route("/api/parts", get(get_parts))
         .route("/api/revisions", get(get_revisions))

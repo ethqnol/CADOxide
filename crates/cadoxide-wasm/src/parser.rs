@@ -579,8 +579,8 @@ impl ParsedBoard {
             let min_cy = ((y0.min(y1) - r) / SPATIAL_CELL_MM).floor() as i32;
             let max_cy = ((y0.max(y1) + r) / SPATIAL_CELL_MM).floor() as i32;
 
-            let span_x = (max_cx - min_cx).min(24);
-            let span_y = (max_cy - min_cy).min(24);
+            let span_x = (max_cx - min_cx).clamp(0, 500);
+            let span_y = (max_cy - min_cy).clamp(0, 500);
 
             for cx in min_cx..=(min_cx + span_x) {
                 for cy in min_cy..=(min_cy + span_y) {
@@ -1329,7 +1329,7 @@ fn process_primitive_block(
     max_y: &mut f32,
 ) {
     let mut update_bounds = |x: f32, y: f32| {
-        if x > 1.0 && y > 1.0 && x < 1000.0 && y < 1000.0 {
+        if x.is_finite() && y.is_finite() {
             if x < *min_x {
                 *min_x = x;
             }

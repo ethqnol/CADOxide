@@ -1,14 +1,85 @@
 //! PCB Vector SVG Export, CAS Caching & 3D VRML Export Handlers
+//! Hardened against path traversal, blocking Tokio workers, and directory races.
 
 use crate::models::{ComputeJob, DrcRequest, LayerRenderResult, RenderRequest};
 use crate::state::AppState;
 use axum::{extract::State, http::StatusCode, Json};
 use chrono::Utc;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::Ordering;
 use tracing::error;
 use uuid::Uuid;
+
+/// Resolves a PCB file path securely, guaranteeing it cannot escape the workspace root.
+pub fn resolve_safe_pcb_path(
+    workspace_root: &Path,
+    project_path: Option<&str>,
+    pcb_filename: &str,
+) -> Result<PathBuf, (StatusCode, String)> {
+    if pcb_filename.contains("..") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Invalid pcb_filename: '..' traversal component forbidden".to_string(),
+        ));
+    }
+
+    let file_path = Path::new(pcb_filename);
+    let canonical_ws = workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| workspace_root.to_path_buf());
+
+    if file_path.is_absolute() {
+        let canonical_file = file_path.canonicalize().map_err(|_| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("PCB file not found: {}", pcb_filename),
+            )
+        })?;
+        if !canonical_file.starts_with(&canonical_ws) {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "Access denied: path escapes workspace".to_string(),
+            ));
+        }
+        return Ok(canonical_file);
+    }
+
+    let base_path = match project_path {
+        Some(p) => {
+            if p.contains("..") {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "Invalid project_path: '..' traversal component forbidden".to_string(),
+                ));
+            }
+            let candidate = workspace_root.join(p);
+            if candidate.exists() {
+                candidate
+            } else {
+                workspace_root.join("public/samples").join(p)
+            }
+        }
+        None => workspace_root.join("public/samples/complex_hierarchy"),
+    };
+
+    let pcb_path = base_path.join(pcb_filename);
+    let canonical_pcb = pcb_path.canonicalize().map_err(|_| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("PCB file not found: {}", pcb_path.display()),
+        )
+    })?;
+
+    if !canonical_pcb.starts_with(&canonical_ws) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Access denied: path escapes workspace".to_string(),
+        ));
+    }
+
+    Ok(canonical_pcb)
+}
 
 pub async fn render_pcb(
     State(state): State<AppState>,
@@ -56,60 +127,65 @@ pub async fn render_pcb(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let base_path = match payload.project_path {
-        Some(ref p) => {
-            let candidate = PathBuf::from(p);
-            if candidate.exists() {
-                candidate
-            } else {
-                state.workspace_root.join("public/samples").join(p)
-            }
-        }
-        None => state.workspace_root.join("public/samples/complex_hierarchy"),
-    };
+    let pcb_path = resolve_safe_pcb_path(
+        &state.workspace_root,
+        payload.project_path.as_deref(),
+        &payload.pcb_filename,
+    )?;
 
-    let pcb_path = if PathBuf::from(&payload.pcb_filename).is_absolute() {
-        PathBuf::from(&payload.pcb_filename)
-    } else {
-        base_path.join(&payload.pcb_filename)
-    };
+    let layers_arg = payload.layers.join(",");
+    let pcb_str = pcb_path.to_string_lossy().to_string();
+    let file_stem = pcb_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("board")
+        .to_string();
 
-    if !pcb_path.exists() {
-        return Err((
-            StatusCode::NOT_FOUND,
-            format!("PCB file not found: {}", pcb_path.display()),
-        ));
-    }
-
-    let out_dir = base_path.join(".cadoxide_renders");
+    // Isolated unique output directory per render job
+    let render_session_id = Uuid::new_v4().to_string();
+    let out_dir = std::env::temp_dir().join(format!("cadoxide_renders_{}", render_session_id));
     std::fs::create_dir_all(&out_dir)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let layers_arg = payload.layers.join(",");
+    let out_dir_str = out_dir.to_string_lossy().to_string();
 
-    let output = Command::new("kicad-cli")
-        .env("XDG_CONFIG_HOME", "/tmp/kicad_cfg")
-        .env("XDG_DATA_HOME", "/tmp/kicad_data")
-        .args([
-            "pcb",
-            "export",
-            "svg",
-            "--mode-multi",
-            "--layers",
-            &layers_arg,
-            "--exclude-drawing-sheet",
-            "--fit-page-to-board",
-            "-o",
-            out_dir.to_str().unwrap(),
-            pcb_path.to_str().unwrap(),
-        ])
-        .output()
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to execute kicad-cli: {}", e),
-            )
-        })?;
+    let output = tokio::task::spawn_blocking(move || {
+        let cfg_dir = std::env::temp_dir().join(format!("kicad_cfg_{}", render_session_id));
+        let data_dir = std::env::temp_dir().join(format!("kicad_data_{}", render_session_id));
+        let _ = std::fs::create_dir_all(&cfg_dir);
+        let _ = std::fs::create_dir_all(&data_dir);
+
+        let res = Command::new("kicad-cli")
+            .env("XDG_CONFIG_HOME", cfg_dir.to_string_lossy().as_ref())
+            .env("XDG_DATA_HOME", data_dir.to_string_lossy().as_ref())
+            .args([
+                "pcb",
+                "export",
+                "svg",
+                "--mode-multi",
+                "--layers",
+                &layers_arg,
+                "--exclude-drawing-sheet",
+                "--fit-page-to-board",
+                "-o",
+                &out_dir_str,
+                &pcb_str,
+            ])
+            .output();
+
+        let _ = std::fs::remove_dir_all(&cfg_dir);
+        let _ = std::fs::remove_dir_all(&data_dir);
+        res
+    })
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Spawn error: {}", e)))?
+    .map_err(|e| {
+        let _ = std::fs::remove_dir_all(&out_dir);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to execute kicad-cli: {}", e),
+        )
+    })?;
 
     if !output.status.success() {
         let err_msg = String::from_utf8_lossy(&output.stderr).to_string();
@@ -117,17 +193,12 @@ pub async fn render_pcb(
     }
 
     let mut results = Vec::new();
-    let file_stem = pcb_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("board");
-
     if let Ok(entries) = std::fs::read_dir(&out_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("svg") {
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if name.starts_with(file_stem) {
+                if name.starts_with(&file_stem) {
                     if let Ok(content) = std::fs::read_to_string(&path) {
                         let layer_id = payload.layers.iter().find(|l| {
                             let norm = l.replace('.', "_");
@@ -152,6 +223,8 @@ pub async fn render_pcb(
         }
     }
 
+    let _ = std::fs::remove_dir_all(&out_dir);
+
     // Store in CAS Cache & Complete Job
     if let Ok(mut cache) = state.render_cache.lock() {
         cache.insert(cas_key, results.clone());
@@ -171,20 +244,17 @@ pub async fn export_3d_vrml(
     State(state): State<AppState>,
     Json(payload): Json<DrcRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let base_path = match &payload.project_path {
-        Some(p) if !p.is_empty() => PathBuf::from(p),
-        _ => state
-            .workspace_root
-            .join("public")
-            .join("samples")
-            .join("complex_hierarchy"),
-    };
-    let pcb_path = if PathBuf::from(&payload.pcb_filename).is_absolute() {
-        PathBuf::from(&payload.pcb_filename)
-    } else {
-        base_path.join(&payload.pcb_filename)
-    };
-    let out_path = base_path.join("board.wrl");
+    let pcb_path = resolve_safe_pcb_path(
+        &state.workspace_root,
+        payload.project_path.as_deref(),
+        &payload.pcb_filename,
+    )?;
+
+    let out_dir = pcb_path
+        .parent()
+        .unwrap_or_else(|| Path::new("/tmp"))
+        .to_path_buf();
+    let out_path = out_dir.join("board.wrl");
 
     let _permit = state
         .worker_semaphore
@@ -196,9 +266,15 @@ pub async fn export_3d_vrml(
     let pcb_str = pcb_path.to_string_lossy().to_string();
 
     let status = tokio::task::spawn_blocking(move || {
-        Command::new("kicad-cli")
-            .env("XDG_CONFIG_HOME", "/tmp/kicad_cfg")
-            .env("XDG_DATA_HOME", "/tmp/kicad_data")
+        let session_id = Uuid::new_v4().to_string();
+        let cfg_dir = std::env::temp_dir().join(format!("kicad_cfg_{}", session_id));
+        let data_dir = std::env::temp_dir().join(format!("kicad_data_{}", session_id));
+        let _ = std::fs::create_dir_all(&cfg_dir);
+        let _ = std::fs::create_dir_all(&data_dir);
+
+        let res = Command::new("kicad-cli")
+            .env("XDG_CONFIG_HOME", cfg_dir.to_string_lossy().as_ref())
+            .env("XDG_DATA_HOME", data_dir.to_string_lossy().as_ref())
             .args([
                 "pcb",
                 "export",
@@ -209,7 +285,11 @@ pub async fn export_3d_vrml(
                 &out_str,
                 &pcb_str,
             ])
-            .status()
+            .status();
+
+        let _ = std::fs::remove_dir_all(&cfg_dir);
+        let _ = std::fs::remove_dir_all(&data_dir);
+        res
     })
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -221,4 +301,18 @@ pub async fn export_3d_vrml(
         "success": status.success(),
         "vrml_path": out_path.to_string_lossy(),
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_path_traversal_prevention() {
+        let ws = std::env::current_dir().unwrap();
+        // Disallow '..' escape
+        assert!(resolve_safe_pcb_path(&ws, Some("../"), "board.kicad_pcb").is_err());
+        assert!(resolve_safe_pcb_path(&ws, None, "../../../etc/passwd").is_err());
+        assert!(resolve_safe_pcb_path(&ws, None, "/etc/shadow").is_err());
+    }
 }
